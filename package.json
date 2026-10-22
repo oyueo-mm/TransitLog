@@ -13,7 +13,8 @@
     "test:watch": "vitest",
     "e2e": "playwright test",
     "icons": "node scripts/make-icons.mjs",
-    "import:local": "tsx scripts/import-local.ts"
+    "import:local": "tsx scripts/import-local.ts",
+    "check:privacy": "node scripts/check-privacy.mjs --history --dist"
   },
   "dependencies": {
     "dexie": "^4.4.6",

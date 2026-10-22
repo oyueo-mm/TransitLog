@@ -3,6 +3,9 @@ import { defineConfig } from '@playwright/test'
 // 빌드한 결과물(서비스 워커 포함)을 그대로 띄워 실제 PWA 와 같은 조건에서 검증한다.
 // 브라우저가 없다면: npx playwright install chromium  (또는 PW_CHANNEL=msedge 로 설치된 Edge 사용)
 const channel = process.env.PW_CHANNEL || undefined
+// 배포된 실제 주소를 검증할 때: E2E_BASE_URL=https://oyueo-mm.github.io/TransitLog/ npx playwright test
+const live = process.env.E2E_BASE_URL
+const baseURL = (live ?? 'http://localhost:4173/TransitLog/').replace(/\/?$/, '/')
 
 export default defineConfig({
   testDir: './e2e',
@@ -12,7 +15,7 @@ export default defineConfig({
   workers: 1,
   reporter: [['list']],
   use: {
-    baseURL: 'http://localhost:4173/',
+    baseURL,
     channel,
     locale: 'ko-KR',
     timezoneId: 'Asia/Seoul',
@@ -30,10 +33,12 @@ export default defineConfig({
       testMatch: /desktop\.spec\.ts/,
     },
   ],
-  webServer: {
-    command: 'npm run build && npx vite preview --port 4173 --strictPort',
-    url: 'http://localhost:4173/',
-    reuseExistingServer: true,
-    timeout: 180_000,
-  },
+  webServer: live
+    ? undefined
+    : {
+        command: 'npm run build && npx vite preview --port 4173 --strictPort',
+        url: baseURL,
+        reuseExistingServer: true,
+        timeout: 180_000,
+      },
 })

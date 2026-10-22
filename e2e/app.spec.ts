@@ -162,6 +162,15 @@ test.describe('오프라인과 설치', () => {
     const res = await request.get(new URL(href!, page.url()).toString())
     const m = await res.json()
     expect(m).toMatchObject({ name: expect.any(String), display: 'standalone', lang: 'ko' })
+    // 프로젝트 사이트(/TransitLog/)에 맞춘 시작 주소·범위·아이콘 경로
+    const root = new URL('./', page.url()).pathname
+    expect(root).toBe('/TransitLog/')
+    expect(m.start_url).toBe(root)
+    expect(m.scope).toBe(root)
+    for (const icon of m.icons as Array<{ src: string }>) {
+      const r = await request.get(new URL(icon.src, new URL(href!, page.url())).toString())
+      expect(r.status(), icon.src).toBe(200)
+    }
     const sizes = (m.icons as Array<{ sizes: string; purpose?: string }>).map((i) => `${i.sizes}${i.purpose ? ':' + i.purpose : ''}`)
     expect(sizes).toEqual(expect.arrayContaining(['192x192:any', '512x512:any', '512x512:maskable']))
   })
