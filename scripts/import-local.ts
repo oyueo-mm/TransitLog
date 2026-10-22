@@ -1,6 +1,7 @@
 /**
  * 로컬 전용: 노트 PDF를 파싱해 검토용 요약과 (선택) 백업 JSON 으로 저장한다.
- *   npx tsx scripts/import-local.ts <노트.pdf> [--out private/import.json] [--dump private/report.txt]
+ *   npx tsx scripts/import-local.ts <노트.pdf> [--out private/import.json] [--confirmed-only] [--dump private/report.txt]
+ * --confirmed-only: 검토 필요 항목을 빼고 문제가 없는 후보만 백업 JSON 으로 만든다 (나머지는 앱의 가져오기 미리보기에서 검토)
  * 결과는 private/ (gitignore) 에만 쓴다. 저장소에 개인 기록을 남기지 않는다.
  */
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
@@ -52,7 +53,7 @@ if (dump) {
 const out = opt('--out')
 if (out) {
   await mkdir(dirname(out), { recursive: true })
-  const backup = candidatesToBackup(parsed, { onlyConfirmed: false })
+  const backup = candidatesToBackup(parsed, { onlyConfirmed: args.includes('--confirmed-only') })
   await writeFile(out, JSON.stringify(backup), 'utf8')
   console.log('백업 JSON:', out, `(기록 ${backup.data.trips.length}건)`)
 }

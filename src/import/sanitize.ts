@@ -39,7 +39,8 @@ const ABUSIVE = /새끼|씹|죽어|죽었으면|뒤져|꺼져|꺼지|노인내|�
 const PERSON =
   /아저씨|아줌마|아주머니|할아버지|할머니|할배|노인|어르신|여자|남자|여학생|남학생|학생|청각|시각장애|장애인|외국인|군인|커플|임산부(?!석)|아기|애기|중고딩|대딩|직장인|금발|흰머리|머리|바지|신발|티셔츠|면티|가디건|후드|바람막이|반지|안경|덩치|현장직|결혼|표정|패션/
 const OFFTOPIC_STRONG = /시험|수업|휴강|과제|밥이|배고|졸려|피곤|서비스센터|쇼핑|개강/
-const TRANSIT_STRONG = /열차|지하철|버스|환승|승강장|정차|지연|연착/
+/** 개인 일정 문장이라도 운행 사고·지연 정보가 들어 있으면 남긴다 */
+const INCIDENT = /지연|연착|정차|고장|점검|응급/
 const TRANSIT =
   /열차|지하철|버스|역|정류|정거장|환승|승강장|지연|연착|정차|혼잡|좌석|자리|앉|서서|서있|서 있|문|칸|대기|급행|행|놓|막차|첫차|배차|출발|도착|탑승|하차|내림|내리|내려|타는|탔|탐|방송|고장|서행|점검|응급|줄|번째|노약자|임산부석|호선|엘리베이터|에스컬레이터|기둥|벽|앞쪽|뒤쪽|맨 앞|맨 뒤|시간대|사람|승객|뛰|빠지|빠짐|빠졌|몰|한산|널널|혼잡|초기화/
 /** 문장이 한 가지 사실만 말하지 않는 표지 (이런 문장에서는 구조화하지 않는다) */
@@ -49,7 +50,6 @@ const CONTRAST =
 interface Rule {
   re: RegExp
   whole: string | ((m: RegExpExecArray) => string)
-  part: string | ((m: RegExpExecArray) => string)
   crowding?: Crowding
 }
 
@@ -57,32 +57,27 @@ const RULES: Rule[] = [
   {
     re: /(\S+행)(?:이라(?:서)?|이어서)?\s*(?:개|ㅈㄴ|존나|졸라)?\s*널널\S*/,
     whole: (m) => `${m[1]} 열차로 여유 좌석이 많았음`,
-    part: (m) => `${m[1]} 열차로 여유 좌석이 많았음`,
     crowding: 'free',
   },
-  { re: /자리\s*(?:를\s*)?(?:뺏|빼앗)(?:김|겼|었|음)|처먹/, whole: '착석 경쟁이 치열했음', part: '착석 경쟁이 치열했음' },
-  { re: /자리\s*경쟁\s*(?:이\s*)?(?:개|ㅈㄴ|존나|좀)?\s*치열\S*/, whole: '착석 경쟁이 치열했음', part: '착석 경쟁이 치열했음' },
+  { re: /자리\s*(?:를\s*)?(?:뺏|빼앗)(?:김|겼|었|음)|처먹/, whole: '착석 경쟁이 치열했음' },
+  { re: /자리\s*경쟁\s*(?:이\s*)?(?:개|ㅈㄴ|존나|좀)?\s*치열\S*/, whole: '착석 경쟁이 치열했음' },
   {
     re: /(?:추가\s*)?자리\S*\s*(?:개|ㅈㄴ|존나|졸라|좀|은근|완전|꽤)?\s*(?:널널|많)\S*/,
     whole: '여유 좌석이 많았음',
-    part: '여유 좌석이 많았음',
   },
   {
     re: /(?:사람|승객|열차\s*안)\S*\s*(?:이|가|도)?\s*(?:개|ㅈㄴ|존나|졸라|엄청|너무)\s*많\S*|지옥철|미어터|발\s*디딜\s*틈/,
     whole: '승차 당시 매우 혼잡했음',
-    part: '매우 혼잡했음',
     crowding: 'very_crowded',
   },
   {
     re: /(?:사람|승객)\S*\s*(?:이|가|도)?\s*(?:은근\s*)?많(?:음|았음|네|다|았다)/,
     whole: '승차 당시 혼잡했음',
-    part: '혼잡했음',
     crowding: 'crowded',
   },
   {
     re: /(?:사람|승객)\S*\s*(?:이|가|도)?\s*(?:개|ㅈㄴ|존나|졸라)?\s*(?:적|없)(?:음|었음|네|다|었다)|한산|텅텅/,
     whole: '승차 당시 한산했음',
-    part: '한산했음',
     crowding: 'free',
   },
 ]
@@ -118,21 +113,21 @@ function neutralizeClause(orig: string): ClauseResult {
     if (seatFight) return { text: '착석 경쟁이 치열했음', crowding: null }
     return { text: null, reason: ABUSIVE.test(c) ? 'abusive' : 'person', crowding: null }
   }
-  if (OFFTOPIC_STRONG.test(c) && !TRANSIT_STRONG.test(c)) return { text: null, reason: 'offtopic', crowding: null }
+  if (OFFTOPIC_STRONG.test(c) && !INCIDENT.test(c)) return { text: null, reason: 'offtopic', crowding: null }
 
   const stripped = stripNoise(c)
   if (stripped.length < 2 || !/[가-힣A-Za-z0-9]/.test(stripped)) return { text: null, reason: 'empty', crowding: null }
 
-  const simple = !CONTRAST.test(c)
-  if (simple) {
+  // 한 가지 사실만 말하는 단순한 문장이 규칙 표현으로 거의 채워진 경우에만 중립 문장으로 바꾼다.
+  // 일부만 바꾸면 의미가 틀어질 수 있어(예: '사람이 개많이 탐') 그 외에는 욕설만 걷어 내고 원문 표현을 유지한다.
+  if (!CONTRAST.test(c)) {
     for (const r of RULES) {
       const m = r.re.exec(c)
       if (!m) continue
       const covers = m[0].length / Math.max(1, c.replace(/\s+/g, ' ').length) >= 0.55
-      const phrase = (covers ? r.whole : r.part) as string | ((x: RegExpExecArray) => string)
-      const to = typeof phrase === 'function' ? phrase(m) : phrase
-      const text = covers ? to : stripNoise(c.slice(0, m.index) + to + c.slice(m.index + m[0].length))
-      return { text, crowding: r.crowding ?? null }
+      if (!covers) continue
+      const to = typeof r.whole === 'function' ? r.whole(m) : r.whole
+      return { text: to, crowding: r.crowding ?? null }
     }
   }
   if (!TRANSIT.test(stripped)) return { text: null, reason: 'offtopic', crowding: null }

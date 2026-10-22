@@ -1,32 +1,127 @@
-# React + TypeScript + Vite
+# TransitLog
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+지하철·버스 탑승을 **5~10초 안에** 기록하고, 쌓인 기록으로 착석률·이동 시간을 분석하는 개인용 모바일 우선 PWA입니다.
+Samsung Notes 에 날짜별로 적던 기록을 대체하기 위해 만들었습니다.
 
-Currently, two official plugins are available:
+- React + TypeScript + Vite, 서버·로그인 없음, 오프라인 사용 가능
+- 데이터는 **이 기기의 브라우저(IndexedDB)에만** 저장됩니다
+- Android 스마트폰(홈 화면에 설치)과 Windows PC(브라우저)에서 사용
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 주요 기능
 
-## React Compiler
+| 화면 | 내용 |
+| --- | --- |
+| 오늘의 기록 | 오늘의 이동 타임라인(승차 시각순), 집 출발·학교 도착·학교 출발·귀가 시각, 등교/하교 전체 이동 시간과 **개별 탑승 시간 합계를 구분**해 표시 |
+| 빠른 기록 | 자주 타는 경로 한 번 선택 → 좌석 상태 선택 → **지금 탑승**. 탑승 중에는 `앉았다/일어섰다/하차` 버튼으로 시각을 자동 기록 |
+| 캘린더 | 월 달력(날짜별 탑승 횟수), 날짜별 일지, 검색·필터(교통수단/종류/목적), 기록 수정·삭제 |
+| 통계 | 날짜·주·월별 탑승 횟수, 노선·구간별 이용, 요일·시간대·행선지·칸·칸-문별 착석률, 혼잡도 분포, 버스/지하철 비교 |
+| 설정·백업 | JSON 백업/복원(병합·교체), CSV 내보내기, 저장소 보호 요청, 경로 관리, 전체 삭제 |
+| 가져오기 | Samsung Notes PDF(또는 텍스트)를 분석 → **원문과 변환 결과를 비교·수정** → 승인한 것만 저장 |
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### 기록 종류와 입력 항목
 
-## Expanding the Oxlint configuration
+- 종류: **탑승**, **놓침·탑승 실패**, **관찰만** — 탑승하지 않은 기록은 이동 횟수·착석률에서 제외됩니다.
+- 지하철: 노선, 열차 출발지·행선지, 급행/일반, 승·하차역과 시각, 칸·문(예: 10-3), 좌/우/양쪽/미상, 대기 순서, 좌석 상태, 혼잡도, 지연·특이사항, 비고
+- 버스: 버스 번호, 승·하차 정류장과 시각, 앞문/중문/뒷문, 대기 순서, 좌석 상태, 혼잡도, 비고 (지하철 전용 필드를 요구하지 않음)
+- **좌석 변화 이벤트**: 한 번의 탑승에서 `08:24 서서 탑승 → 08:30 ○○역 착석 → 09:20 하차`처럼 상태가 바뀔 수 있습니다.
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+## 설계 원칙 (데이터를 정직하게 다루기)
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+1. **모르는 값은 `null`(미기록)** 로 저장합니다. 다른 기록으로 추정해 채우지 않습니다.
+2. **미기록과 해당 없음을 구분**합니다. 값이 없어도 `해당 없음`으로 체크한 필드는 `naFields`에 기록됩니다(CSV에서는 빈 칸=미기록, `N/A`=해당 없음).
+3. 승차 시각만 있으면 하차 시각과 소요 시간은 비워 둡니다. 좌석 정보가 없으면 '서서 감'으로 단정하지 않습니다.
+4. **실제 입력값과 추천값을 구분**합니다. 추천은 점선 칩으로 표시되고, 누르기 전에는 저장되지 않으며, 좌석 상태·혼잡도·대기 순서 같은 **현재 관측값은 추천하지 않습니다.** 이전 기록을 복사해도 장소·행선지·위치만 가져옵니다.
+5. 통계는 값이 있는 기록만 표본으로 쓰고, **모든 비율에 분자/분모와 판정 가능한 표본 수**를 함께 표시합니다.
+
+### 착석 지표 정의
+
+| 지표 | 정의 | 분모 |
+| --- | --- | --- |
+| 즉시 착석률 | 탑승 시점에 앉아 있었음 | 탑승 시 좌석이 기록된 탑승 |
+| 한 번이라도 착석 | 탑승 중 한 번이라도 앉음 | 앉은 기록 + '끝까지 서 있었음(변화 없음)'이 확인된 기록 |
+| 최종 착석률 | 하차 직전 앉아 있음 | 좌석 변화 기록이 **완결**(`seatLogComplete`)로 확인된 탑승 |
+| 서서 탄 뒤 착석까지 | 서서 탑승 → 첫 착석까지 분 | 두 시각이 모두 있는 탑승 |
+| 서서 이동한 시간 | 서 있던 구간의 합 | 변화 기록 완결 + 승·하차·변화 시각이 모두 있는 탑승 |
+
+자정을 넘기는 이동(23:50 → 00:10)은 다음 날로 계산합니다. 필요한 시각이 하나라도 없으면 계산값도 미확인으로 남깁니다.
+
+## 설치와 실행
+
+```bash
+npm install
+npm run dev        # 개발 서버 (http://localhost:5173)
+npm run build      # 타입 검사 + 프로덕션 빌드 (dist/)
+npm run preview    # 빌드 결과 확인 (PWA·오프라인은 빌드본에서 동작)
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+### 테스트
+
+```bash
+npm test                         # Vitest 단위 테스트 (가상 데이터만 사용)
+npx playwright install chromium  # 최초 1회 (또는 PW_CHANNEL=msedge 로 설치된 Edge 사용)
+npm run e2e                      # Playwright: 360px 모바일 + 데스크톱, 오프라인, 백업·복원, 가져오기, 접근성(axe)
+```
+
+### 휴대폰에서 사용하기
+
+PWA는 HTTPS(또는 localhost)에서만 설치·오프라인이 동작합니다. 개인용이라 정적 호스팅 하나면 충분합니다.
+`dist/` 폴더를 본인 계정의 정적 호스팅(GitHub Pages·Netlify·Cloudflare Pages 등)에 올리면 됩니다 — `base: './'` + HashRouter 라 하위 경로에서도 동작합니다.
+(이 저장소는 원격 저장소를 만들거나 배포하지 않습니다. 앱 코드에는 개인 데이터가 없으므로 배포해도 되지만, 어디에 올릴지는 직접 정해 주세요.)
+
+1. 배포한 주소를 Android Chrome 으로 연다 → 메뉴 ⋮ → **홈 화면에 추가 / 앱 설치**
+2. 처음 실행하면 브라우저가 저장소 보호를 요청한다 (설정·백업 화면에서도 요청 가능)
+3. **백업을 습관화**하세요. 화면 상단에 백업 알림이 표시됩니다(7일 이상 백업이 없을 때).
+
+## 데이터 보관 방식
+
+IndexedDB(`TransitLog`)에 용도별로 분리해 저장합니다.
+
+| 테이블 | 내용 |
+| --- | --- |
+| `trips` | 탑승·놓침·관찰 기록 |
+| `seatEvents` | 한 번의 탑승 중 좌석 상태 변화 (`tripId` 로 연결) |
+| `days` | 날짜별 일지 (집 출발·학교 도착·학교 출발·귀가) |
+| `templates` | 직접 저장한 경로 템플릿 |
+| `settings` | 마지막 사용값, 마지막 백업 시각 등 |
+
+- 스키마 버전은 Dexie `version()` 과 백업 파일의 `schemaVersion` 으로 관리합니다. 더 새로운 버전의 백업은 거부하고, 이전 버전 백업은 읽을 때 현재 형태로 올립니다.
+- 브라우저 데이터 삭제·기기 변경으로 기록을 잃지 않도록 **JSON 백업을 정기적으로** 받아 두세요. 복원은 기본이 **병합**(같은 기록은 건너뛰고 기존 데이터를 덮어쓰지 않음)이며, 전체 교체 복원은 현재 데이터를 먼저 자동으로 내려받은 뒤 진행합니다.
+- 착석 가능성 예측을 나중에 붙일 수 있도록 `src/domain/features.ts` 에 특징(feature)·라벨(label) 평면 데이터셋 변환을 마련해 두었습니다. 지금은 단순 통계만 제공합니다.
+
+## 기존 노트(Samsung Notes) 가져오기
+
+설정·백업 → **PDF 가져오기** (또는 `#/import`).
+
+1. PDF 에서 **텍스트를 추출**합니다 (pdf.js). 줄바꿈으로 갈라진 문장은 이어 붙이되, 날짜·머리줄·상세 줄은 붙이지 않습니다. 텍스트가 없는 PDF(손글씨·이미지)는 OCR 을 지원하지 않으므로 안내만 합니다. PDF 안의 사진은 읽지 않습니다.
+2. 날짜·이동 기록 단위로 나누고 노선(또는 버스 번호), 출발→종착, 승·하차 구간과 시각, 칸-문, 좌우, 대기 순서, `서서감->○○역에서 앉음(08:30)` 같은 좌석 변화, 하루 단위 기록(`(07:55 집에서 출발)`)을 읽습니다.
+3. `??`·`?`·`기억 안 남` 은 값으로 채우지 않고 미기록으로 둡니다. `4?5번째`·`~듯` 같은 불확실한 서술도 값으로 확정하지 않고 비고/검토 사유로 남깁니다.
+4. 비고는 **순화**합니다 — 욕설·감정 표현은 중립 문장으로("사람 개많음" → "승차 당시 매우 혼잡했음"), 교통과 무관한 개인 이야기와 다른 승객의 신상·외모 묘사는 제외하고 교통 사실(지연·혼잡·좌석·대기)은 보존합니다. 제외한 문장은 미리보기에서 사유와 함께 보여 줍니다.
+5. 탑승 근거가 없으면 **관찰만**, 못 탄 기록은 **놓침**으로 분리하고 검토 대상으로 표시합니다.
+6. 이미 저장된 기록(날짜·종류·시각·노선·장소가 같음)은 **중복**으로 표시되어 건너뜁니다.
+7. 요약(전체 후보·확정·검토 필요·누락 정보) → 원문/변환 결과 비교·수정 → **승인한 것만 저장**. 원문은 저장하지 않고 정제된 데이터만 저장합니다.
+
+미리보기의 *일괄 적용*(자동 적용 안 함): ① `서서감`/`앉아서감`만 적힌 기록을 "탑승 중 변화 없음"으로 확정, ② 집 출발·학교 도착 시각 기준 등·하교 구분 추천.
+
+### 개인 기록 취급
+
+- **원본 PDF, 변환된 실제 기록, 백업 파일은 절대 공개 저장소에 올리지 않습니다.** `.gitignore` 가 `*.pdf`, `private/`, `transitlog-backup-*.json`, `transitlog-*.csv` 를 제외합니다.
+- 테스트와 픽스처는 모두 **가상의 데이터**입니다. 실제 기록을 넣지 마세요.
+- 로컬 변환 스크립트(`npm run import:local -- <노트.pdf> --out private/x.json --confirmed-only`)는 결과를 `private/` 에만 씁니다. 만들어진 JSON 은 설정·백업 → 복원으로 불러옵니다.
+
+## 프로젝트 구조
+
+```
+src/domain/   타입, 시간 계산(자정 넘김), 좌석 지표, 통계, 추천, 예측용 특징
+src/db/       Dexie 스키마, 저장소 함수, JSON/CSV 백업·복원
+src/import/   PDF 텍스트 추출, 노트 파서, 비고 순화, 저장(중복 방지)
+src/pages/    오늘·빠른 기록·캘린더·통계·설정·가져오기·편집 화면
+src/ui/       공통 컴포넌트, 기록 입력 폼, 훅
+tests/        Vitest 단위 테스트        e2e/  Playwright 테스트
+```
+
+## 알려진 한계
+
+- 노트 파서는 규칙 기반입니다. 실제 노트 형식에 맞춰 만들었지만 새로운 표기에서는 "검토 필요"나 `해석하지 못한 줄`로 남을 수 있어 미리보기 확인이 필요합니다. 비고 순화도 완벽하지 않으니 원문과 비교해 주세요.
+- OCR(손글씨·이미지 PDF)과 PDF 속 사진은 지원하지 않습니다.
+- 클라우드 동기화가 없어 기기 간 이동은 백업 파일로 합니다. iOS 는 고려하지 않았습니다.
+- 예측 기능은 구조만 준비했고 구현하지 않았습니다.

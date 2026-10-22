@@ -651,18 +651,27 @@ input:disabled {
 
 /* 일지 */
 .daytimes {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.daytime {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 .daytime label {
-  font-size: 0.82rem;
+  font-size: 0.9rem;
   font-weight: 600;
-  display: block;
-  margin-bottom: 4px;
+}
+.daytime .field-row {
+  flex: 0 0 210px;
+  min-width: 0;
 }
 .daytime .field-row input {
   min-width: 0;
+  flex: 1;
 }
 .totals,
 .metrics {

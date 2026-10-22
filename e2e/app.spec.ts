@@ -313,8 +313,9 @@ test.describe('360px 모바일 화면과 접근성', () => {
     for (const r of ROUTES) {
       await gotoApp(page, r)
       await page.waitForTimeout(150)
-      const { sw, cw } = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth }))
-      expect(sw, `${r || '오늘'}: 가로 스크롤 발생`).toBeLessThanOrEqual(cw)
+      // 모바일 에뮬레이션은 내용이 넓으면 레이아웃 뷰포트가 함께 넓어지므로 고정 폭(360)과 비교한다
+      const sw = await page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth))
+      expect(sw, `${r || '오늘'}: 가로 스크롤 발생`).toBeLessThanOrEqual(page.viewportSize()!.width)
       const small = await page.evaluate(() => {
         const out: string[] = []
         for (const el of document.querySelectorAll<HTMLElement>('main button, main a, main select, main input, nav a')) {

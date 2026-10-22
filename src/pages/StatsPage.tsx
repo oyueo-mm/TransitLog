@@ -46,6 +46,17 @@ function Bars({ items, max }: { items: Array<{ key: string; count: number }>; ma
   )
 }
 
+/** 비율의 분모가 전체 탑승 중 얼마인지 보여 줘, 판정 가능한 기록만 센 값임을 드러낸다 */
+function Coverage({ den, total }: { den: number; total: number }) {
+  if (total === 0 || den === total) return null
+  return (
+    <span className="muted small">
+      {' '}
+      · 전체 {total}건 중 {den}건만 판정 가능
+    </span>
+  )
+}
+
 function GroupTable({ groups, limit = 10, labelOf }: { groups: Group[]; limit?: number; labelOf?: (k: string) => string }) {
   if (groups.length === 0) return <Empty>표시할 데이터가 없습니다. (값이 기록된 탑승만 집계합니다)</Empty>
   return (
@@ -143,6 +154,7 @@ export function StatsPage() {
                 <dt>즉시 착석률</dt>
                 <dd>
                   <Ratio num={seat.immediate.num} den={seat.immediate.den} />
+                  <Coverage den={seat.immediate.den} total={rows.length} />
                 </dd>
                 <dd className="def">탑승 시점에 이미 앉았던 비율 (탑승 시 좌석이 기록된 탑승 기준)</dd>
               </div>
@@ -150,13 +162,15 @@ export function StatsPage() {
                 <dt>한 번이라도 착석한 비율</dt>
                 <dd>
                   <Ratio num={seat.everSeated.num} den={seat.everSeated.den} />
+                  <Coverage den={seat.everSeated.den} total={rows.length} />
                 </dd>
-                <dd className="def">탑승 중 한 번이라도 앉은 비율. 끝까지 서 있었음이 확인된 기록과 앉은 기록만 집계</dd>
+                <dd className="def">탑승 중 한 번이라도 앉은 비율. 앉은 기록과 ‘끝까지 서 있었음(변화 없음)’이 확인된 기록만 집계하므로, 서서 탄 뒤 변화 여부를 확인하지 않은 기록은 빠집니다</dd>
               </div>
               <div>
                 <dt>최종 착석률</dt>
                 <dd>
                   <Ratio num={seat.final.num} den={seat.final.den} />
+                  <Coverage den={seat.final.den} total={rows.length} />
                 </dd>
                 <dd className="def">하차 직전 앉아 있던 비율 (좌석 변화 기록이 완결된 탑승만)</dd>
               </div>
