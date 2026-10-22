@@ -22,14 +22,15 @@ export function removeFirstSeated(events: SeatEventDraft[]): SeatEventDraft[] {
 
 const sig = (e: SeatEventDraft) => [e.time ?? '', e.state, e.place ?? '', e.note ?? ''].join('|')
 
-/** 시각·상태·장소·비고가 모두 같은 이벤트는 하나로 합친다 (중복 생성 방지) */
+/**
+ * 바로 이어서 들어간 완전히 같은 이벤트(시각·상태·장소·비고가 모두 같음)만 하나로 합친다 — 버튼을 연타해서 생긴 중복.
+ * 같은 분이라는 이유만으로, 또는 떨어져 있는 같은 내용(착석→일어섬→착석)은 합치지 않는다. 입력 순서는 그대로 둔다.
+ */
 export function dedupeEvents(events: SeatEventDraft[]): SeatEventDraft[] {
-  const seen = new Set<string>()
   const out: SeatEventDraft[] = []
   for (const e of events) {
-    const k = sig(e)
-    if (seen.has(k)) continue
-    seen.add(k)
+    const prev = out[out.length - 1]
+    if (prev && sig(prev) === sig(e)) continue
     out.push(e)
   }
   return out

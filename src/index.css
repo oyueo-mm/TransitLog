@@ -1033,3 +1033,246 @@ input:disabled {
   margin: 4px 0 12px;
   min-height: 44px;
 }
+
+/* 시각 입력: 오전/오후 · 시 · 분을 분리해 한 줄 전체 너비로, 글자 크기가 커져도 줄바꿈되어 잘리지 않게 */
+.timeinput {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+}
+.ti-main {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ti-ap {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.ti-ap .seg-btn {
+  min-height: 3rem;
+  font-size: 1rem;
+}
+.ti-ap .seg-btn + .seg-btn {
+  border-left: 1px solid var(--border);
+}
+.ti-hm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.ti-hm select {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 3.25rem;
+  font-size: 1.2rem;
+  padding: 0 0.5rem;
+}
+.ti-colon {
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+.ti-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  min-width: 0;
+}
+.ti-out {
+  flex: 1 1 8rem;
+  min-width: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.timeinput.is-compact .ti-main {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: stretch;
+}
+.timeinput.is-compact .ti-ap {
+  flex: 0 0 7.5rem;
+}
+.timeinput.is-compact .ti-hm {
+  flex: 1 1 9rem;
+}
+.timeinput.is-compact .ti-hm select {
+  min-height: 3rem;
+  font-size: 1.05rem;
+}
+.event-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--bg);
+}
+.event-card .grid2 {
+  grid-template-columns: minmax(0, 1fr);
+}
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.toast.has-action {
+  padding-right: 6px;
+}
+/* 안내 문구는 클릭을 통과시키고 '실행 취소' 버튼만 눌리게 해서 아래 버튼을 가리지 않는다 */
+.toast.show .toast-action {
+  pointer-events: auto;
+}
+/* 안내가 떠 있는 동안 화면 맨 아래 내용도 안내 위로 스크롤해 누를 수 있도록 여백을 둔다 */
+body.has-toast .app {
+  padding-bottom: calc(var(--nav-h) + 84px + env(safe-area-inset-bottom, 0px));
+}
+.toast-action {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text);
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.event-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  list-style: none;
+}
+.event-list {
+  padding-left: 0;
+}
+.event-item .ev-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.event-item .ev-actions {
+  display: flex;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+.event-edit {
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 12px;
+  margin: 6px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--bg);
+}
+.seat-summary {
+  margin-top: 6px;
+  font-size: 0.88rem;
+}
+
+/* 통계: 판정 가능 표본과 경고 */
+.metric {
+  background: var(--surface);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.metric dt {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.metric dd {
+  margin: 4px 0 0;
+}
+.metric .coverage {
+  font-size: 0.9rem;
+}
+.metric .caution {
+  background: var(--warn-soft);
+  color: var(--warn);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.metric .caution.strong {
+  font-size: 1rem;
+  font-weight: 800;
+  border: 2px solid var(--warn);
+}
+.metric .value {
+  font-size: 1.25rem;
+}
+.metric .value.dim {
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+.metric.is-weak {
+  border: 1px dashed var(--warn);
+}
+.metric .def {
+  font-weight: 400;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.sample-overview {
+  margin-top: 0;
+}
+
+a.btn-text {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.field-label {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+.field-row {
+  flex-wrap: wrap;
+}
+
+/* 안내(토스트): 너비를 명시해 좁은 화면에서 글자가 세로로 쪼개지지 않게 한다 */
+.toast {
+  left: 50%;
+  width: min(26rem, calc(100vw - 32px));
+  max-width: none;
+  justify-content: space-between;
+  border-radius: 16px;
+}
+.toast > span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.metric details {
+  font-weight: 400;
+  font-size: 0.85rem;
+}
+.metric summary {
+  font-weight: 600;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}

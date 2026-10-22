@@ -124,7 +124,8 @@ export interface Setting {
 export const SCHEMA_VERSION = 1
 
 export type TripDraft = Omit<Trip, 'id' | 'createdAt' | 'updatedAt'>
-export type SeatEventDraft = Omit<SeatEvent, 'id' | 'tripId' | 'createdAt'>
+/** id 가 있으면 저장할 때 같은 식별자를 유지한다(수정 화면에서 기존 이벤트를 다시 저장하는 경우) */
+export type SeatEventDraft = Omit<SeatEvent, 'id' | 'tripId' | 'createdAt'> & { id?: string }
 
 export const KIND_LABEL: Record<RecordKind, string> = {
   ride: '탑승',

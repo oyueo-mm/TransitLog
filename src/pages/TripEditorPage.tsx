@@ -55,7 +55,7 @@ export function TripEditorPage() {
         if (!alive) return
         setExisting(t)
         setDraft(draftFrom(t))
-        setEvents(evs.map((e) => ({ time: e.time, state: e.state, place: e.place })))
+        setEvents(evs.map((e) => ({ id: e.id, time: e.time, state: e.state, place: e.place, note: e.note ?? null })))
       } else {
         const date = sp.get('date') ?? todayStr()
         const copy = sp.get('copy')

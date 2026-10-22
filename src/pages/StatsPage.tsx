@@ -22,6 +22,7 @@ import {
   type Group,
   type RideRow,
 } from '../domain/stats'
+import { sampleNote, seatCoverage } from '../domain/coverage'
 import { CROWDING_LABEL, type Crowding } from '../domain/types'
 import { Chip, Empty, Ratio, Section, destLabel } from '../ui/common'
 import { useAllEvents, useAllTrips } from '../ui/hooks'
@@ -46,14 +47,60 @@ function Bars({ items, max }: { items: Array<{ key: string; count: number }>; ma
   )
 }
 
-/** 비율의 분모가 전체 탑승 중 얼마인지 보여 줘, 판정 가능한 기록만 센 값임을 드러낸다 */
-function Coverage({ den, total }: { den: number; total: number }) {
-  if (total === 0 || den === total) return null
+/**
+ * 착석 지표 카드. 숫자보다 먼저 '몇 건을 판정했고 몇 건이 빠졌는지'를 보여 주고,
+ * 표본이 적거나 일부만 판정된 비율은 경고를 숫자보다 눈에 띄게 한다.
+ */
+function SeatMetric(props: { title: string; num: number; den: number; total: number; def: string; reasons: Array<[string, number]>; bias?: string }) {
+  const { title, num, den, total } = props
+  const note = sampleNote(den, total)
+  const pct = den === 0 ? null : Math.round((num / den) * 100)
+  const excludedReasons = props.reasons.filter(([, n]) => n > 0)
   return (
-    <span className="muted small">
-      {' '}
-      · 전체 {total}건 중 {den}건만 판정 가능
-    </span>
+    <div className={`metric ${note.insufficient ? 'is-weak' : ''}`}>
+      <dt>{title}</dt>
+      <dd className="coverage">
+        판정 가능 <strong>{den}건</strong> / 전체 {total}건 · 제외 <strong>{note.excluded}건</strong>
+      </dd>
+      {note.insufficient && (
+        <dd className="caution strong">
+          ⚠ 표본 부족 ({den}건) — 해석 주의
+        </dd>
+      )}
+      {!note.insufficient && note.partial && (
+        <dd className="caution">
+          ⚠ 전체의 {note.coveragePct}%만 판정 — 전체 착석률로 읽지 마세요{props.bias ? ` (${props.bias})` : ''}
+        </dd>
+      )}
+      <dd className={`value ${note.insufficient ? 'dim' : ''}`}>
+        {pct === null ? (
+          <span className="muted">표본 없음</span>
+        ) : (
+          <>
+            <strong>{pct}%</strong>{' '}
+            <span className="muted">
+              ({num}/{den})
+            </span>
+          </>
+        )}
+      </dd>
+      <dd className="def">{props.def}</dd>
+      {excludedReasons.length > 0 && (
+        <dd>
+          <details>
+            <summary>제외된 {note.excluded}건의 이유</summary>
+            <ul className="plain small">
+              {excludedReasons.map(([label, n]) => (
+                <li key={label}>
+                  {label}: {n}건
+                </li>
+              ))}
+            </ul>
+            <p className="hint">제외된 기록은 ‘서서 감’도 ‘앉아서 감’도 아닌 미확인으로 두며 어느 쪽 통계에도 넣지 않습니다.</p>
+          </details>
+        </dd>
+      )}
+    </div>
   )
 }
 
@@ -102,6 +149,7 @@ export function StatsPage() {
   if (!trips || !events) return <div className="page"><p className="muted">불러오는 중…</p></div>
 
   const seat = seatRatios(rows)
+  const cov = seatCoverage(rows)
   const dur = averageDuration(rows)
   const toSeat = averageMinutesToFirstSeat(rows)
   const standing = averageStandingMinutes(rows)
@@ -149,31 +197,53 @@ export function StatsPage() {
           </Section>
 
           <Section title="착석 지표">
+            <div className="notice sample-overview" role="note">
+              <strong>전체 탑승 {cov.total}건</strong> 중 판정 가능한 건수는 지표마다 다릅니다 — 즉시 {seat.immediate.den}건 · 한 번이라도 {seat.everSeated.den}건 · 최종 {seat.final.den}건.
+              <details>
+                <summary>분모가 서로 다른 이유</summary>
+                <ul className="plain small">
+                  <li>
+                    <strong>즉시 착석률</strong>: 탑승할 때 좌석 상태를 기록한 탑승 중 앉아서 탄 비율입니다.
+                  </li>
+                  <li>
+                    <strong>한 번이라도 착석</strong>: 앉은 것이 확인된 기록과 ‘끝까지 서 있었다’고 확인한 기록만 셉니다. 서서 탄 뒤 이후를 확인하지 않은 기록은 앉았는지 알 수 없어 뺍니다.
+                  </li>
+                  <li>
+                    <strong>최종 착석률</strong>: 좌석 변화 기록을 ‘완결’로 확인한 탑승만 셉니다.
+                  </li>
+                  <li>미확인 기록은 ‘서서 감’이나 ‘앉아서 감’으로 처리하지 않습니다. 기록 수정에서 좌석 변화를 확인하면 표본이 늘어납니다.</li>
+                </ul>
+              </details>
+            </div>
             <dl className="metrics">
-              <div>
-                <dt>즉시 착석률</dt>
-                <dd>
-                  <Ratio num={seat.immediate.num} den={seat.immediate.den} />
-                  <Coverage den={seat.immediate.den} total={rows.length} />
-                </dd>
-                <dd className="def">탑승 시점에 이미 앉았던 비율 (탑승 시 좌석이 기록된 탑승 기준)</dd>
-              </div>
-              <div>
-                <dt>한 번이라도 착석한 비율</dt>
-                <dd>
-                  <Ratio num={seat.everSeated.num} den={seat.everSeated.den} />
-                  <Coverage den={seat.everSeated.den} total={rows.length} />
-                </dd>
-                <dd className="def">탑승 중 한 번이라도 앉은 비율. 앉은 기록과 ‘끝까지 서 있었음(변화 없음)’이 확인된 기록만 집계하므로, 서서 탄 뒤 변화 여부를 확인하지 않은 기록은 빠집니다</dd>
-              </div>
-              <div>
-                <dt>최종 착석률</dt>
-                <dd>
-                  <Ratio num={seat.final.num} den={seat.final.den} />
-                  <Coverage den={seat.final.den} total={rows.length} />
-                </dd>
-                <dd className="def">하차 직전 앉아 있던 비율 (좌석 변화 기록이 완결된 탑승만)</dd>
-              </div>
+              <SeatMetric
+                title="즉시 착석률"
+                num={seat.immediate.num}
+                den={seat.immediate.den}
+                total={cov.total}
+                def="탑승 시점에 이미 앉아 있었던 비율 (탑승 시 좌석 상태를 기록한 탑승만)"
+                reasons={[['탑승 시 좌석 상태를 기록하지 않음', cov.immediate.unknown]]}
+              />
+              <SeatMetric
+                title="한 번이라도 착석한 비율"
+                num={seat.everSeated.num}
+                den={seat.everSeated.den}
+                total={cov.total}
+                bias="서서 탄 뒤 확인하지 않은 기록이 빠져 실제보다 높게 보일 수 있어요"
+                def="탑승 중 한 번이라도 앉은 비율. 앉은 것이 확인된 기록과 ‘끝까지 서 있었음’을 확인한 기록만 센다"
+                reasons={[
+                  ['서서 탔지만 이후 앉았는지 확인하지 않음(‘변화 없음’ 미확인)', cov.ever.unconfirmedStanding],
+                  ['좌석 정보가 없음', cov.ever.unknown],
+                ]}
+              />
+              <SeatMetric
+                title="최종 착석률"
+                num={seat.final.num}
+                den={seat.final.den}
+                total={cov.total}
+                def="하차 직전 앉아 있던 비율 (좌석 변화 기록이 완결로 확인된 탑승만)"
+                reasons={[['좌석 변화 기록 완결을 확인하지 않음', cov.final.unconfirmed]]}
+              />
               <div>
                 <dt>서서 탄 뒤 착석까지 평균</dt>
                 <dd>{toSeat.avg === null ? '—' : formatDuration(Math.round(toSeat.avg))} <span className="muted">(표본 {toSeat.n})</span></dd>

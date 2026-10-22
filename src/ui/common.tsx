@@ -1,6 +1,7 @@
 import { type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { formatTrainRoute } from '../domain/stations'
+import { clearToast, type ToastState } from './hooks'
 import { diffMinutes, formatDuration } from '../domain/time'
 import { summarizeSeat, tripDuration } from '../domain/seat'
 import {
@@ -169,10 +170,22 @@ export function minutesBetween(a: string | null, b: string | null) {
   return diffMinutes(a, b)
 }
 
-export function ToastView({ msg }: { msg: string | null }) {
+export function ToastView({ toast: t }: { toast: ToastState | null }) {
   return (
-    <div className={`toast ${msg ? 'show' : ''}`} role="status" aria-live="polite">
-      {msg}
+    <div className={`toast ${t ? 'show' : ''} ${t?.action ? 'has-action' : ''}`} role="status" aria-live="polite">
+      <span>{t?.msg}</span>
+      {t?.action && (
+        <button
+          type="button"
+          className="toast-action"
+          onClick={async () => {
+            await t.action!.run()
+            clearToast()
+          }}
+        >
+          {t.action.label}
+        </button>
+      )}
     </div>
   )
 }

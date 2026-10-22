@@ -19,7 +19,11 @@ const NAV = [
 ]
 
 function Shell() {
-  const msg = useToastHost()
+  const toastState = useToastHost()
+  useEffect(() => {
+    document.body.classList.toggle('has-toast', !!toastState?.action)
+    return () => document.body.classList.remove('has-toast')
+  }, [toastState])
   useEffect(() => {
     // 브라우저가 저장 공간 부족 시 데이터를 지우지 않도록 요청 (허용 여부는 브라우저가 결정)
     void navigator.storage?.persist?.().catch(() => undefined)
@@ -40,7 +44,7 @@ function Shell() {
           <Route path="*" element={<TodayPage />} />
         </Routes>
       </main>
-      <ToastView msg={msg} />
+      <ToastView toast={toastState} />
       <nav className="bottom-nav" aria-label="주요 메뉴">
         {NAV.map((n) => (
           <NavLink key={n.to} to={n.to} end={n.to === '/'} className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}>

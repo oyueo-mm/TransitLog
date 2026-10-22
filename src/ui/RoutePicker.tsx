@@ -105,7 +105,7 @@ function PlaceField(props: {
             className="quick-input"
             type="text"
             aria-label={`${props.label} 직접 입력`}
-            placeholder="다른 곳은 검색하거나 직접 입력"
+            placeholder="검색·직접 입력"
             list={`${id}-list`}
             value={props.value ?? ''}
             onChange={(e) => props.onChange(e.target.value || null)}

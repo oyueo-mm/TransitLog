@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { addDays, formatDuration, nowHm, parseDate, todayStr, weekdayKo } from '../domain/time'
+import { addDays, formatDuration, parseDate, todayStr, weekdayKo } from '../domain/time'
 import { dayTotals } from '../domain/seat'
 import { sortTrips, saveDay } from '../db/repo'
 import { PURPOSE_LABEL, type DayLog, type Purpose } from '../domain/types'
 import { Chip, Empty, Section, TripCard } from '../ui/common'
+import { TimeInput } from '../ui/TimeInput'
 import { useAllEvents, useDay, useTripsOn } from '../ui/hooks'
 
 function dateTitle(date: string): string {
@@ -23,25 +24,9 @@ const DAY_FIELDS: Array<{ key: DayField; label: string }> = [
 function DayTimes({ date, day }: { date: string; day: DayLog | undefined }) {
   return (
     <div className="daytimes">
-      {DAY_FIELDS.map((f) => {
-        const v = day?.[f.key] ?? null
-        return (
-          <div className="daytime" key={f.key}>
-            <label htmlFor={`day-${f.key}`}>{f.label}</label>
-            <div className="field-row">
-              <input
-                id={`day-${f.key}`}
-                type="time"
-                value={v ?? ''}
-                onChange={(e) => void saveDay(date, { [f.key]: e.target.value || null })}
-              />
-              <button type="button" className="btn-small" onClick={() => void saveDay(date, { [f.key]: nowHm() })}>
-                지금
-              </button>
-            </div>
-          </div>
-        )
-      })}
+      {DAY_FIELDS.map((f) => (
+        <TimeInput key={f.key} label={f.label} value={day?.[f.key] ?? null} onChange={(t) => void saveDay(date, { [f.key]: t })} nowLabel="지금" compact />
+      ))}
     </div>
   )
 }

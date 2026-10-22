@@ -9,6 +9,8 @@ import {
   recordRide,
   restoreBackup,
   selectLine,
+  setTime,
+  timeOut,
 } from './fixtures'
 
 interface TripRow {
@@ -253,12 +255,12 @@ test.describe('중간 착석 기록', () => {
     const mid = page.getByRole('group', { name: '중간 착석 기록' })
     await expect(mid).toBeVisible()
     await expect(page.getByRole('button', { name: '+ 중간에 앉음 기록' })).toHaveCount(0) // 눌러도 두 개가 생기지 않는다
-    await mid.getByLabel('착석한 시각').fill('08:30')
+    await setTime(mid, '착석한 시각', '08:30')
     await mid.getByLabel('착석한 역·정류장 직접 입력').fill('성균관대역') // 노선 역 목록에 없는 역
     await mid.getByLabel('비고 (선택)').fill('앞 사람이 내림')
     await page.getByRole('button', { name: '지금 탑승' }).click()
     await expect(page.getByRole('heading', { name: '탑승 중' })).toBeVisible()
-    await expect(page.locator('.event-list')).toContainText('08:30 성균관대역 착석 (앞 사람이 내림)')
+    await expect(page.locator('.event-list')).toContainText('08:30 · 착석 · 성균관대역 (앞 사람이 내림)')
 
     const events = await readDb<EventRow>(page, 'seatEvents')
     expect(events).toHaveLength(1)
@@ -275,9 +277,9 @@ test.describe('중간 착석 기록', () => {
     // 선택한 노선의 역이 추천된다
     expect(await mid.getByRole('group', { name: '착석한 역·정류장' }).getByRole('button').allTextContents()).toEqual(expect.arrayContaining(['신도림역', '홍대입구역', '합정역']))
     await mid.getByRole('button', { name: '지금 앉음' }).click()
-    await expect(mid.getByLabel('착석한 시각')).toHaveValue(/^\d\d:\d\d$/)
+    await expect(timeOut(mid, '착석한 시각')).toHaveText(/^(오전|오후) \d\d:\d\d$/)
     // 시각을 지우고 역도 비운 채로 저장 (모르는 값은 미기록)
-    await mid.getByLabel('착석한 시각').fill('')
+    await mid.getByRole('group', { name: '착석한 시각', exact: true }).getByRole('button', { name: '지우기' }).click()
     await saveOnly(page)
     await expect.poll(async () => (await readDb(page, 'trips')).length).toBe(1)
     const events = await readDb<EventRow>(page, 'seatEvents')
@@ -302,12 +304,12 @@ test.describe('중간 착석 기록', () => {
 
     await gotoApp(page, `trip/${t.id}`)
     const mid = page.getByRole('group', { name: '중간 착석 기록' })
-    await expect(mid.getByLabel('착석한 시각')).toHaveValue('08:30')
+    await expect(timeOut(mid, '착석한 시각')).toHaveText('오전 08:30')
     await expect(mid.getByLabel('착석한 역·정류장 직접 입력')).toHaveValue('성균관대역')
     await expect(page.getByRole('button', { name: '+ 중간에 앉음 기록' })).toHaveCount(0)
 
     // 수정: 시각 변경, 역 변경, 비고 추가
-    await mid.getByLabel('착석한 시각').fill('08:40')
+    await setTime(mid, '착석한 시각', '08:40')
     await mid.getByLabel('착석한 역·정류장 직접 입력').fill('라라역')
     await mid.getByLabel('비고 (선택)').fill('수정함')
     await page.getByRole('button', { name: '저장', exact: true }).click()
@@ -327,7 +329,7 @@ test.describe('중간 착석 기록', () => {
     // 다시 추가 (시각만 입력, 역은 모름)
     await gotoApp(page, `trip/${t.id}`)
     await page.getByRole('button', { name: '+ 중간에 앉음 기록' }).click()
-    await page.getByRole('group', { name: '중간 착석 기록' }).getByLabel('착석한 시각').fill('08:35')
+    await setTime(page.getByRole('group', { name: '중간 착석 기록' }), '착석한 시각', '08:35')
     await page.getByRole('button', { name: '저장', exact: true }).click()
     await expect(page.getByRole('heading', { name: '3월 2일 (월)' })).toBeVisible()
     events = await readDb<EventRow>(page, 'seatEvents')
@@ -356,7 +358,7 @@ test.describe('중간 착석 기록', () => {
     const [trip] = await readDb<TripRow>(page, 'trips')
     await gotoApp(page, `trip/${trip.id}`)
     await expect(page.getByRole('group', { name: '중간 착석 기록' })).toBeVisible()
-    await expect(page.locator('.event-row')).toHaveCount(2) // 일어섬, 두 번째 착석
+    await expect(page.locator('.event-card')).toHaveCount(2) // 일어섬, 두 번째 착석
     await page.getByRole('button', { name: '저장', exact: true }).click()
     await expect(page.getByRole('heading', { name: /\d+월 \d+일/ }).first()).toBeVisible()
     const after = (await readDb<EventRow & { createdAt: number }>(page, 'seatEvents')).sort((a, b) => a.createdAt - b.createdAt)

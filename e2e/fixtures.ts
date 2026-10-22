@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test'
+import { expect, type Locator, type Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import { emptyTripDraft, type SeatEvent, type Trip } from '../src/domain/types'
 
@@ -138,4 +138,23 @@ export async function expectNoSeriousA11y(page: Page, label: string) {
   const res = await new AxeBuilder({ page }).analyze()
   const bad = res.violations.filter((v) => v.impact === 'critical' || v.impact === 'serious')
   expect(bad.map((v) => `${v.id}: ${v.nodes[0]?.html.slice(0, 90)}`), `${label}: axe`).toEqual([])
+}
+
+/**
+ * 시각 입력(오전/오후 버튼 + 시·분 선택)에 'HH:mm'(24시간제) 값을 넣는다.
+ * scope 는 page 또는 그 안의 영역(Locator), label 은 시각 입력의 이름(예: '착석한 시각').
+ */
+export async function setTime(scope: Page | Locator, label: string, hhmm: string) {
+  const [h, m] = hhmm.split(':').map(Number)
+  const ap = h >= 12 ? '오후' : '오전'
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  const group = scope.getByRole('group', { name: label, exact: true })
+  await group.getByRole('button', { name: ap, exact: true }).click()
+  await group.getByLabel(`${label} 시`, { exact: true }).selectOption(String(h12))
+  await group.getByLabel(`${label} 분`, { exact: true }).selectOption(String(m).padStart(2, '0'))
+}
+
+/** 시각 입력이 보여 주는 값('오전 08:30') */
+export function timeOut(scope: Page | Locator, label: string): Locator {
+  return scope.getByRole('group', { name: label, exact: true }).locator('output')
 }

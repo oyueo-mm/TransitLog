@@ -1,12 +1,14 @@
 import { db as defaultDb, type TransitDB } from './db'
 import { nowHm, todayStr } from '../domain/time'
 import { cleanEvent, dedupeEvents } from '../domain/seatEdit'
+import { currentSeat, nextCreatedAt, seatContentChanged } from '../domain/seatLog'
 import {
   emptyTripDraft,
   type DayLog,
   type RouteTemplate,
   type SeatEvent,
   type SeatEventDraft,
+  type SeatState,
   type Trip,
   type TripDraft,
 } from '../domain/types'
@@ -69,13 +71,14 @@ export async function saveTrip(
     await d.trips.put(trip)
     if (events) {
       await d.seatEvents.where('tripId').equals(trip.id).delete()
+      const used = new Set<string>()
       await d.seatEvents.bulkAdd(
-        dedupeEvents(events.map(cleanEvent)).map((e, i) => ({
-          ...e,
-          id: newId(),
-          tripId: trip.id,
-          createdAt: now + i,
-        })),
+        dedupeEvents(events.map(cleanEvent)).map((e, i) => {
+          // 기존 이벤트는 같은 식별자를 유지한다 (같은 id 가 두 번 나오면 두 번째에 새 id)
+          const id = e.id && !used.has(e.id) ? e.id : newId()
+          used.add(id)
+          return { ...e, id, tripId: trip.id, createdAt: now + i }
+        }),
       )
     }
   })
@@ -138,16 +141,87 @@ export async function endRide(
   return saveTrip({ ...t, ...patch, ongoing: false, alightTime: patch.alightTime ?? nowHm() }, undefined, d)
 }
 
-export async function addSeatEvent(
-  tripId: string,
-  e: SeatEventDraft,
-  d: TransitDB = defaultDb,
-): Promise<SeatEvent> {
-  const ev: SeatEvent = { ...e, id: newId(), tripId, createdAt: Date.now() }
-  await d.seatEvents.add(ev)
-  // 새 변화가 생기면 '기록 완료' 확인은 무효가 된다
-  await d.trips.update(tripId, { seatLogComplete: null, updatedAt: Date.now() })
-  return ev
+/**
+ * 탑승 중 좌석 변화를 하나 더한다.
+ *  - 현재 좌석과 같은 상태(앉아 있는데 또 '앉았다')는 중복 요청으로 보고 만들지 않는다 → null
+ *  - 같은 분의 서로 다른 변화(착석→일어섬)는 그대로 모두 저장하고 입력 순서를 보존한다
+ *  - 이벤트가 달라졌으므로 '기록 완결' 확인은 해제한다
+ */
+export async function addSeatEvent(tripId: string, e: SeatEventDraft, d: TransitDB = defaultDb): Promise<SeatEvent | null> {
+  return d.transaction('rw', d.trips, d.seatEvents, async () => {
+    const trip = await d.trips.get(tripId)
+    if (!trip) return null
+    const existing = await d.seatEvents.where('tripId').equals(tripId).sortBy('createdAt')
+    if (currentSeat(trip, existing) === e.state) return null
+    const ev: SeatEvent = { ...cleanEvent(e), id: newId(), tripId, createdAt: nextCreatedAt(existing) }
+    await d.seatEvents.add(ev)
+    await d.trips.update(tripId, { seatLogComplete: null, updatedAt: Date.now() })
+    return ev
+  })
+}
+
+export type SeatEventPatch = Partial<Pick<SeatEvent, 'state' | 'time' | 'place' | 'note'>>
+
+/** 이벤트 하나만 고친다 (식별자·입력 순서 유지). 상태나 시각이 바뀌면 완결 확인을 해제한다 */
+export async function updateSeatEvent(id: string, patch: SeatEventPatch, d: TransitDB = defaultDb): Promise<SeatEvent | null> {
+  return d.transaction('rw', d.trips, d.seatEvents, async () => {
+    const cur = await d.seatEvents.get(id)
+    if (!cur) return null
+    const next = { ...cur, ...cleanEvent({ time: cur.time, state: cur.state, place: cur.place, note: cur.note, ...patch }) }
+    await d.seatEvents.put(next)
+    const trip = await d.trips.get(cur.tripId)
+    if (trip && seatContentChanged({ initialSeat: trip.initialSeat, events: [cur] }, { initialSeat: trip.initialSeat, events: [next] })) {
+      await d.trips.update(trip.id, { seatLogComplete: null, updatedAt: Date.now() })
+    } else if (trip) {
+      await d.trips.update(trip.id, { updatedAt: Date.now() })
+    }
+    return next
+  })
+}
+
+/** 좌석 이벤트 *하나*만 지운다. 탑승 기록과 다른 이벤트는 그대로 두고 완결 확인은 해제한다 */
+export async function deleteSeatEvent(id: string, d: TransitDB = defaultDb): Promise<SeatEvent | null> {
+  return d.transaction('rw', d.trips, d.seatEvents, async () => {
+    const cur = await d.seatEvents.get(id)
+    if (!cur) return null
+    await d.seatEvents.delete(id)
+    await d.trips.update(cur.tripId, { seatLogComplete: null, updatedAt: Date.now() })
+    return cur
+  })
+}
+
+/** 탑승 시 좌석을 지정·변경한다(완결 확인은 해제) */
+export async function setInitialSeat(tripId: string, seat: SeatState | null, d: TransitDB = defaultDb): Promise<void> {
+  await d.transaction('rw', d.trips, async () => {
+    const t = await d.trips.get(tripId)
+    if (!t || t.initialSeat === seat) return
+    await d.trips.update(tripId, { initialSeat: seat, seatLogComplete: null, updatedAt: Date.now() })
+  })
+}
+
+/** 실행 취소용: 한 탑승의 좌석 관련 상태(이벤트 전체 + 탑승 시 좌석 + 완결 확인)를 그대로 저장해 둔다 */
+export interface SeatSnapshot {
+  tripId: string
+  initialSeat: SeatState | null
+  seatLogComplete: boolean | null
+  events: SeatEvent[]
+}
+
+export async function captureSeatState(tripId: string, d: TransitDB = defaultDb): Promise<SeatSnapshot | null> {
+  const t = await d.trips.get(tripId)
+  if (!t) return null
+  const events = await d.seatEvents.where('tripId').equals(tripId).sortBy('createdAt')
+  return { tripId, initialSeat: t.initialSeat, seatLogComplete: t.seatLogComplete, events }
+}
+
+/** 저장해 둔 상태로 되돌린다. 같은 식별자·입력 순서로 이벤트를 복원하며 탑승 기록의 다른 값은 건드리지 않는다 */
+export async function restoreSeatState(snap: SeatSnapshot, d: TransitDB = defaultDb): Promise<void> {
+  await d.transaction('rw', d.trips, d.seatEvents, async () => {
+    if (!(await d.trips.get(snap.tripId))) return
+    await d.seatEvents.where('tripId').equals(snap.tripId).delete()
+    await d.seatEvents.bulkAdd(snap.events)
+    await d.trips.update(snap.tripId, { initialSeat: snap.initialSeat, seatLogComplete: snap.seatLogComplete, updatedAt: Date.now() })
+  })
 }
 
 export async function ongoingTrip(d: TransitDB = defaultDb): Promise<Trip | undefined> {

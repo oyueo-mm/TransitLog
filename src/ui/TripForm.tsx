@@ -20,10 +20,12 @@ import {
   type TripDraft,
 } from '../domain/types'
 import { findFirstSeated } from '../domain/seatEdit'
+import { reconcileSeatLog } from '../domain/seatLog'
 import { knownStations, suggestSeatPlaces } from '../domain/suggest'
 import type { Trip } from '../domain/types'
 import { ChipGroup } from './common'
 import { MidSeat } from './MidSeat'
+import { TimeInput } from './TimeInput'
 import { RoutePicker } from './RoutePicker'
 
 type Draft = TripDraft
@@ -121,23 +123,7 @@ function NumField(props: {
 }
 
 function TimeField(props: { label: string; value: string | null; onChange: (v: string | null) => void }) {
-  const id = useId()
-  return (
-    <div className="field">
-      <label className="field-label" htmlFor={id}>
-        {props.label}
-        {!props.value && <span className="unrecorded">미기록</span>}
-      </label>
-      <div className="field-row">
-        <input id={id} type="time" value={props.value ?? ''} onChange={(e) => props.onChange(e.target.value || null)} />
-        {props.value && (
-          <button type="button" className="btn-text" onClick={() => props.onChange(null)}>
-            지우기
-          </button>
-        )}
-      </div>
-    </div>
-  )
+  return <TimeInput label={props.label} value={props.value} onChange={props.onChange} />
 }
 
 export interface TripFormProps {
@@ -165,7 +151,19 @@ export function TripForm({ value: v, events, onChange, history = [], historyEven
         events,
       ),
   })
-  const setEvents = (next: SeatEventDraft[]) => onChange({ ...v, seatLogComplete: next.length !== events.length ? null : v.seatLogComplete }, next)
+  // 좌석 이벤트·탑승 시 좌석이 달라지면 '기록 완결' 확인은 해제된다 (이전 확인이 부정확하게 남지 않도록)
+  const withSeat = (nextV: Draft, nextEvents: SeatEventDraft[]) =>
+    onChange(
+      {
+        ...nextV,
+        seatLogComplete: reconcileSeatLog(
+          { initialSeat: v.initialSeat, events, seatLogComplete: v.seatLogComplete },
+          { initialSeat: nextV.initialSeat, events: nextEvents },
+        ),
+      },
+      nextEvents,
+    )
+  const setEvents = (next: SeatEventDraft[]) => withSeat(v, next)
   const isSubway = v.mode === 'subway'
   const isRide = v.kind === 'ride'
 
@@ -207,7 +205,8 @@ export function TripForm({ value: v, events, onChange, history = [], historyEven
         na={{ trainOrigin: na('trainOrigin'), trainDestination: na('trainDestination') }}
       />
 
-      <div className="grid2">
+      {/* 모바일에서도 잘리지 않도록 시각은 한 줄에 하나씩 전체 너비로 */}
+      <div className="stack">
         <TimeField label={isRide ? '승차 시각' : '관찰 시각'} value={v.boardTime} onChange={(x) => set('boardTime', x)} />
         {isRide && <TimeField label="하차 시각" value={v.alightTime} onChange={(x) => set('alightTime', x)} />}
       </div>
@@ -252,13 +251,13 @@ export function TripForm({ value: v, events, onChange, history = [], historyEven
               { value: 'seated', label: '앉아서' },
             ]}
             value={v.initialSeat}
-            onChange={(x) => set('initialSeat', x)}
+            onChange={(x) => withSeat({ ...v, initialSeat: x }, events)}
             hint="모르면 비워 두세요. 좌석 정보가 없는 기록을 '서서 감'으로 보지 않습니다."
           />
           {v.initialSeat === 'standing' && (
             <MidSeat
               events={events}
-              onChange={(next) => onChange({ ...v, seatLogComplete: next.length !== events.length ? null : v.seatLogComplete }, next)}
+              onChange={(next) => withSeat(v, next)}
               places={suggestSeatPlaces(history, historyEvents, { line: v.line, mode: v.mode })}
               known={knownStations(history, historyEvents)}
             />
@@ -267,33 +266,45 @@ export function TripForm({ value: v, events, onChange, history = [], historyEven
           {events.length === 0 && <div className="hint">기록된 변화가 없습니다.</div>}
           {events.map((e, i) =>
             v.initialSeat === 'standing' && i === findFirstSeated(events) ? null : (
-            <div className="event-row" key={i}>
-              <input
-                type="time"
-                aria-label={`좌석 변화 ${i + 1} 시각`}
-                value={e.time ?? ''}
-                onChange={(ev) => setEvents(events.map((x, j) => (j === i ? { ...x, time: ev.target.value || null } : x)))}
-              />
-              <input
-                type="text"
-                aria-label={`좌석 변화 ${i + 1} 역·정류장`}
-                placeholder="역·정류장 (선택)"
-                value={e.place ?? ''}
-                list="seat-places"
-                onChange={(ev) => setEvents(events.map((x, j) => (j === i ? { ...x, place: ev.target.value || null } : x)))}
-              />
-              <select
-                aria-label={`좌석 변화 ${i + 1} 상태`}
-                value={e.state}
-                onChange={(ev) => setEvents(events.map((x, j) => (j === i ? { ...x, state: ev.target.value as SeatState } : x)))}
-              >
-                <option value="seated">착석</option>
-                <option value="standing">일어섬</option>
-              </select>
-              <button type="button" className="btn-text danger" onClick={() => setEvents(events.filter((_, j) => j !== i))} aria-label={`좌석 변화 ${i + 1} 삭제`}>
-                삭제
-              </button>
-            </div>
+              <div className="event-card" key={e.id ?? i} role="group" aria-label={`좌석 변화 ${i + 1}`}>
+                <div className="row-between">
+                  <strong>좌석 변화 {i + 1}</strong>
+                  <button type="button" className="btn-text danger" onClick={() => setEvents(events.filter((_, j) => j !== i))} aria-label={`좌석 변화 ${i + 1} 삭제`}>
+                    삭제
+                  </button>
+                </div>
+                <TimeInput
+                  label={`좌석 변화 ${i + 1} 시각`}
+                  value={e.time}
+                  onChange={(t) => setEvents(events.map((x, j) => (j === i ? { ...x, time: t } : x)))}
+                  compact
+                />
+                <div className="grid2">
+                  <select
+                    aria-label={`좌석 변화 ${i + 1} 상태`}
+                    value={e.state}
+                    onChange={(ev) => setEvents(events.map((x, j) => (j === i ? { ...x, state: ev.target.value as SeatState } : x)))}
+                  >
+                    <option value="seated">착석</option>
+                    <option value="standing">일어섬</option>
+                  </select>
+                  <input
+                    type="text"
+                    aria-label={`좌석 변화 ${i + 1} 역·정류장`}
+                    placeholder="역·정류장 (선택)"
+                    value={e.place ?? ''}
+                    list="seat-places"
+                    onChange={(ev) => setEvents(events.map((x, j) => (j === i ? { ...x, place: ev.target.value || null } : x)))}
+                  />
+                  <input
+                    type="text"
+                    aria-label={`좌석 변화 ${i + 1} 비고`}
+                    placeholder="비고 (선택)"
+                    value={e.note ?? ''}
+                    onChange={(ev) => setEvents(events.map((x, j) => (j === i ? { ...x, note: ev.target.value || null } : x)))}
+                  />
+                </div>
+              </div>
             ),
           )}
           <datalist id="seat-places">
@@ -316,7 +327,7 @@ export function TripForm({ value: v, events, onChange, history = [], historyEven
             ]}
             value={v.seatLogComplete === null ? null : v.seatLogComplete ? 'yes' : 'no'}
             onChange={(x) => set('seatLogComplete', x === null ? null : x === 'yes')}
-            hint="'예'일 때만 최종 착석 여부와 서서 이동 시간을 계산합니다."
+            hint="'예'일 때만 최종 착석 여부와 서서 이동 시간을 계산합니다. 이벤트나 탑승 시 좌석을 바꾸면 이 확인은 자동으로 해제되니 다시 확인해 주세요."
           />
         </fieldset>
       )}

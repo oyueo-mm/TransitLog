@@ -67,19 +67,32 @@ export function useLocalSetting<T>(key: string, fallback: T) {
 }
 
 // ── 토스트 ──────────────────────────────────────────────
-type ToastListener = (msg: string) => void
-const toastListeners = new Set<ToastListener>()
-export function toast(msg: string) {
-  toastListeners.forEach((l) => l(msg))
+export interface ToastAction {
+  label: string
+  run: () => void | Promise<void>
 }
-export function useToastHost(): string | null {
-  const [msg, setMsg] = useState<string | null>(null)
+export interface ToastState {
+  msg: string
+  action?: ToastAction
+}
+type ToastListener = (t: ToastState | null) => void
+const toastListeners = new Set<ToastListener>()
+
+/** 안내를 잠깐 보여 준다. action 이 있으면(예: 실행 취소) 조금 더 오래 보이고 버튼을 함께 표시한다 */
+export function toast(msg: string, action?: ToastAction) {
+  toastListeners.forEach((l) => l({ msg, action }))
+}
+export function clearToast() {
+  toastListeners.forEach((l) => l(null))
+}
+export function useToastHost(): ToastState | null {
+  const [t, setT] = useState<ToastState | null>(null)
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined
-    const l: ToastListener = (m) => {
-      setMsg(m)
+    const l: ToastListener = (next) => {
+      setT(next)
       clearTimeout(timer)
-      timer = setTimeout(() => setMsg(null), 2600)
+      if (next) timer = setTimeout(() => setT(null), next.action ? 6000 : 2600)
     }
     toastListeners.add(l)
     return () => {
@@ -87,5 +100,5 @@ export function useToastHost(): string | null {
       clearTimeout(timer)
     }
   }, [])
-  return msg
+  return t
 }

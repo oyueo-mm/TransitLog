@@ -2,9 +2,9 @@ import { useId } from 'react'
 import { findFirstSeated, removeFirstSeated, upsertFirstSeated } from '../domain/seatEdit'
 import { canonicalName } from '../domain/stations'
 import type { PlaceSuggestion } from '../domain/suggest'
-import { nowHm } from '../domain/time'
 import type { SeatEventDraft } from '../domain/types'
 import { Chip } from './common'
+import { TimeInput } from './TimeInput'
 
 /**
  * '서서 탑승' 뒤에 중간에 앉은 일을 기록한다 (시각·역·비고, 모두 선택).
@@ -38,17 +38,7 @@ export function MidSeat(props: {
           중간 착석 삭제
         </button>
       </div>
-      <div className="field">
-        <label className="field-label" htmlFor={`${id}-t`}>
-          착석한 시각 {!ev.time && <span className="unrecorded">미기록</span>}
-        </label>
-        <div className="field-row">
-          <input id={`${id}-t`} type="time" value={ev.time ?? ''} onChange={(e) => set({ time: e.target.value || null })} />
-          <button type="button" className="btn-small" onClick={() => set({ time: nowHm() })}>
-            지금 앉음
-          </button>
-        </div>
-      </div>
+      <TimeInput label="착석한 시각" value={ev.time} onChange={(t) => set({ time: t })} nowLabel="지금 앉음" />
       <div className="field" role="group" aria-label="착석한 역·정류장">
         <div className="field-label">
           착석한 역·정류장 {!ev.place && <span className="unrecorded">미기록</span>}
