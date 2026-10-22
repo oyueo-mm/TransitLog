@@ -273,7 +273,7 @@ export function tripsToCsv(trips: Trip[], events: SeatEvent[]): string {
       na('waitOrder', t.waitOrder),
       t.initialSeat === null ? '' : t.initialSeat === 'seated' ? '앉아서' : '서서',
       evs
-        .map((e) => [e.time, e.place, e.state === 'seated' ? '착석' : '일어섬'].filter(Boolean).join(' '))
+        .map((e) => [e.time, e.place, e.state === 'seated' ? '착석' : '일어섬', e.note ? `(${e.note})` : ''].filter(Boolean).join(' '))
         .join('; '),
       t.seatLogComplete === null ? '' : t.seatLogComplete ? '예' : '아니오',
       yn(s.immediate),

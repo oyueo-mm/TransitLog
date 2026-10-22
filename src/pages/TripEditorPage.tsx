@@ -1,12 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams, useSearchParams, Link } from 'react-router-dom'
 import { db } from '../db/db'
 import { deleteTrip, saveTemplate, saveTrip, templateFromTrip, defaultTemplateName } from '../db/repo'
-import { rankedValues } from '../domain/recommend'
 import { emptyTripDraft, type SeatEventDraft, type Trip, type TripDraft } from '../domain/types'
 import { todayStr } from '../domain/time'
 import { TripForm } from '../ui/TripForm'
-import { toast, useAllTrips } from '../ui/hooks'
+import { toast, useAllEvents, useAllTrips } from '../ui/hooks'
 
 function draftFrom(t: Trip): TripDraft {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -72,20 +71,7 @@ export function TripEditorPage() {
     }
   }, [id, sp])
 
-  const suggestions = useMemo(() => {
-    const all = trips ?? []
-    const mode = draft?.mode
-    const byMode = (t: Trip) => t.mode === mode
-    const places = [
-      ...rankedValues(all, (t) => t.boardPlace, byMode, 30),
-      ...rankedValues(all, (t) => t.alightPlace, byMode, 30),
-    ].map((r) => r.value)
-    return {
-      lines: rankedValues(all, (t) => t.line, byMode, 30).map((r) => r.value),
-      places: [...new Set(places)],
-      destinations: rankedValues(all, (t) => t.trainDestination, () => true, 30).map((r) => r.value),
-    }
-  }, [trips, draft?.mode])
+  const events$ = useAllEvents()
 
   if (error) {
     return (
@@ -132,7 +118,7 @@ export function TripEditorPage() {
       <header className="page-head">
         <h1>{isNew ? '기록 추가' : '기록 수정'}</h1>
       </header>
-      <TripForm value={draft} events={events} onChange={(d, e) => (setDraft(d), setEvents(e))} suggestions={suggestions} />
+      <TripForm value={draft} events={events} onChange={(d, e) => (setDraft(d), setEvents(e))} history={trips ?? []} historyEvents={events$ ?? []} />
       <div className="formbar">
         <button className="btn-primary" onClick={save} disabled={saving}>
           저장

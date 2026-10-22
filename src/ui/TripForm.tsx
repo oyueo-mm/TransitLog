@@ -19,7 +19,12 @@ import {
   type Side,
   type TripDraft,
 } from '../domain/types'
+import { findFirstSeated } from '../domain/seatEdit'
+import { knownStations, suggestSeatPlaces } from '../domain/suggest'
+import type { Trip } from '../domain/types'
 import { ChipGroup } from './common'
+import { MidSeat } from './MidSeat'
+import { RoutePicker } from './RoutePicker'
 
 type Draft = TripDraft
 
@@ -139,12 +144,14 @@ export interface TripFormProps {
   value: Draft
   events: SeatEventDraft[]
   onChange: (value: Draft, events: SeatEventDraft[]) => void
-  suggestions?: { lines?: string[]; places?: string[]; destinations?: string[] }
+  /** 노선·역 추천과 자동완성의 근거가 되는 과거 기록 */
+  history?: Trip[]
+  historyEvents?: Array<{ tripId: string; place: string | null }>
   /** 가져오기 미리보기에서는 날짜를 고정 */
   lockDate?: boolean
 }
 
-export function TripForm({ value: v, events, onChange, suggestions, lockDate }: TripFormProps) {
+export function TripForm({ value: v, events, onChange, history = [], historyEvents = [], lockDate }: TripFormProps) {
   const set = <K extends keyof Draft>(k: K, val: Draft[K]) => onChange({ ...v, [k]: val }, events)
   const na = (key: NaKey) => ({
     on: v.naFields.includes(key),
@@ -191,38 +198,22 @@ export function TripForm({ value: v, events, onChange, suggestions, lockDate }: 
         <input id="trip-date" type="date" value={v.date} disabled={lockDate} onChange={(e) => e.target.value && set('date', e.target.value)} />
       </div>
 
+      <RoutePicker
+        value={v}
+        history={history}
+        historyEvents={historyEvents}
+        showAlight={isRide}
+        onChange={(patch) => onChange({ ...v, ...patch }, events)}
+        na={{ trainOrigin: na('trainOrigin'), trainDestination: na('trainDestination') }}
+      />
+
       <div className="grid2">
         <TimeField label={isRide ? '승차 시각' : '관찰 시각'} value={v.boardTime} onChange={(x) => set('boardTime', x)} />
         {isRide && <TimeField label="하차 시각" value={v.alightTime} onChange={(x) => set('alightTime', x)} />}
       </div>
 
-      <TextField
-        label={isSubway ? '노선' : '버스 번호'}
-        value={v.line}
-        onChange={(x) => set('line', x)}
-        placeholder={isSubway ? '예: 1호선' : '예: 1234'}
-        list={suggestions?.lines}
-      />
-      <div className="grid2">
-        <TextField label={isSubway ? '승차역' : '승차 정류장'} value={v.boardPlace} onChange={(x) => set('boardPlace', x)} list={suggestions?.places} />
-        {isRide && (
-          <TextField label={isSubway ? '하차역' : '하차 정류장'} value={v.alightPlace} onChange={(x) => set('alightPlace', x)} list={suggestions?.places} />
-        )}
-      </div>
-
       {isSubway ? (
         <>
-          <div className="grid2">
-            <TextField label="열차 출발지" value={v.trainOrigin} onChange={(x) => set('trainOrigin', x)} na={na('trainOrigin')} list={suggestions?.places} />
-            <TextField
-              label="행선지"
-              value={v.trainDestination}
-              onChange={(x) => set('trainDestination', x)}
-              placeholder="예: 종착역 (행 제외)"
-              na={na('trainDestination')}
-              list={suggestions?.destinations}
-            />
-          </div>
           <ChipGroup<Service>
             label="운행 종류"
             options={opts(SERVICE_LABEL)}
@@ -264,9 +255,18 @@ export function TripForm({ value: v, events, onChange, suggestions, lockDate }: 
             onChange={(x) => set('initialSeat', x)}
             hint="모르면 비워 두세요. 좌석 정보가 없는 기록을 '서서 감'으로 보지 않습니다."
           />
-          <div className="field-label">탑승 중 좌석 변화</div>
+          {v.initialSeat === 'standing' && (
+            <MidSeat
+              events={events}
+              onChange={(next) => onChange({ ...v, seatLogComplete: next.length !== events.length ? null : v.seatLogComplete }, next)}
+              places={suggestSeatPlaces(history, historyEvents, { line: v.line, mode: v.mode })}
+              known={knownStations(history, historyEvents)}
+            />
+          )}
+          <div className="field-label">{v.initialSeat === 'standing' && findFirstSeated(events) >= 0 ? '그 밖의 좌석 변화' : '탑승 중 좌석 변화'}</div>
           {events.length === 0 && <div className="hint">기록된 변화가 없습니다.</div>}
-          {events.map((e, i) => (
+          {events.map((e, i) =>
+            v.initialSeat === 'standing' && i === findFirstSeated(events) ? null : (
             <div className="event-row" key={i}>
               <input
                 type="time"
@@ -294,9 +294,10 @@ export function TripForm({ value: v, events, onChange, suggestions, lockDate }: 
                 삭제
               </button>
             </div>
-          ))}
+            ),
+          )}
           <datalist id="seat-places">
-            {(suggestions?.places ?? []).map((p) => (
+            {knownStations(history, historyEvents).map((p) => (
               <option key={p} value={p} />
             ))}
           </datalist>

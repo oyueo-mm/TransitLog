@@ -81,6 +81,8 @@ export interface SeatEvent {
   time: string | null
   state: SeatState
   place: string | null
+  /** 선택 입력 메모. 이전 버전에서 저장한 이벤트에는 없을 수 있다 */
+  note?: string | null
   createdAt: number
 }
 

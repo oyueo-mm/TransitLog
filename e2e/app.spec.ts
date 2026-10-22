@@ -55,14 +55,14 @@ test.describe('빠른 기록과 저장', () => {
     await page.locator('button.chip.route').first().click() // 1: 자주 타는 경로
     taps++
     // 가져온 것은 경로·위치뿐이고, 좌석 상태·혼잡도는 아직 선택되지 않은 상태
-    await expect(page.getByRole('button', { name: '서서', exact: true })).toHaveAttribute('aria-pressed', 'false')
-    await expect(page.getByRole('button', { name: '앉아서', exact: true })).toHaveAttribute('aria-pressed', 'false')
+    await expect(page.getByRole('button', { name: '서서 탑승', exact: true })).toHaveAttribute('aria-pressed', 'false')
+    await expect(page.getByRole('button', { name: '앉아서 탑승', exact: true })).toHaveAttribute('aria-pressed', 'false')
     for (const c of ['한산', '보통', '혼잡', '매우 혼잡']) {
       await expect(page.getByRole('button', { name: c, exact: true })).toHaveAttribute('aria-pressed', 'false')
     }
     await expect(page.getByText('경로·위치를 가져왔어요')).toBeVisible()
 
-    await page.getByRole('button', { name: '앉아서', exact: true }).click() // 2: 지금 좌석 상태
+    await page.getByRole('button', { name: '앉아서 탑승', exact: true }).click() // 2: 지금 좌석 상태
     taps++
     await page.getByRole('button', { name: '지금 탑승' }).click() // 3
     taps++
@@ -100,7 +100,7 @@ test.describe('빠른 기록과 저장', () => {
     await page.locator('.card', { hasText: '1호선' }).click()
     await expect(page.getByRole('heading', { name: '기록 수정' })).toBeVisible()
 
-    await page.getByLabel('노선', { exact: true }).fill('2호선') // list 속성이 있어 combobox 역할
+    await page.getByRole('group', { name: '노선 선택' }).getByRole('button', { name: '2호선', exact: true }).click()
     await page.getByRole('button', { name: '저장', exact: true }).click()
     await expect(page.locator('.card', { hasText: '2호선' })).toBeVisible()
 
@@ -300,7 +300,7 @@ test.describe('기존 노트 가져오기', () => {
     await expect(page.getByRole('heading', { name: '가져오기 미리보기' })).toBeVisible({ timeout: 30_000 })
     await expect(page.locator('.totals').first()).toContainText('3건')
     await page.getByRole('button', { name: /08:00/ }).click()
-    await expect(page.getByLabel('노선', { exact: true })).toHaveValue('1호선')
+    await expect(page.getByRole('group', { name: '노선 선택' }).getByRole('button', { name: '1호선', exact: true })).toHaveAttribute('aria-pressed', 'true')
   })
 
   test('텍스트가 없는 PDF는 원본이 필요함을 알린다', async ({ page, context }) => {

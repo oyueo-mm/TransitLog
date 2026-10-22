@@ -1,4 +1,5 @@
 import { parseHm, weekdayIndex, diffMinutes } from './time'
+import { sameStation } from './stations'
 import type { Mode, RouteTemplate, Trip, TripDraft } from './types'
 
 /**
@@ -204,7 +205,7 @@ export function suggestPositions(trips: Trip[], line: string | null, boardPlace:
   for (const t of rides(trips)) {
     if (t.mode !== 'subway' || t.car === null || t.door === null) continue
     if (line && t.line !== line) continue
-    if (boardPlace && t.boardPlace !== boardPlace) continue
+    if (boardPlace && !sameStation(t.boardPlace, boardPlace)) continue
     const k = `${t.car}-${t.door}-${t.side ?? ''}`
     const cur = m.get(k)
     if (cur) cur.count++

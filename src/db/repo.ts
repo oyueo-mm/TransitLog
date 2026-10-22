@@ -1,5 +1,6 @@
 import { db as defaultDb, type TransitDB } from './db'
 import { nowHm, todayStr } from '../domain/time'
+import { cleanEvent, dedupeEvents } from '../domain/seatEdit'
 import {
   emptyTripDraft,
   type DayLog,
@@ -69,7 +70,7 @@ export async function saveTrip(
     if (events) {
       await d.seatEvents.where('tripId').equals(trip.id).delete()
       await d.seatEvents.bulkAdd(
-        events.map((e, i) => ({
+        dedupeEvents(events.map(cleanEvent)).map((e, i) => ({
           ...e,
           id: newId(),
           tripId: trip.id,

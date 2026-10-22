@@ -27,7 +27,9 @@ const FORBIDDEN_PATH = [
 const isForbidden = (p) => FORBIDDEN_PATH.some((re) => re.test(p))
 
 // 1) 추적 파일
-for (const f of git('ls-files').split('\n').filter(Boolean)) {
+// 커밋 전의 새 파일(untracked, .gitignore 제외)도 검사 대상에 포함한다
+const worktreeFiles = () => git('ls-files', '--cached', '--others', '--exclude-standard').split('\n').filter(Boolean)
+for (const f of worktreeFiles()) {
   if (isForbidden(f)) failures.push(`추적 중인 개인 데이터 파일: ${f}`)
 }
 // 이력 속 파일 경로
@@ -68,7 +70,7 @@ if (existsSync(denyPath)) {
     }
   }
   const BIN = /\.(png|ico|woff2?|jpg|webp)$/i
-  for (const f of git('ls-files').split('\n').filter(Boolean)) {
+  for (const f of worktreeFiles()) {
     if (BIN.test(f) || f === 'package-lock.json' || !existsSync(f)) continue
     scan(`작업 트리 ${f}`, readFileSync(f, 'utf8'))
   }

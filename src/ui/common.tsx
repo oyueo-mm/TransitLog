@@ -1,5 +1,6 @@
 import { type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
+import { formatTrainRoute } from '../domain/stations'
 import { diffMinutes, formatDuration } from '../domain/time'
 import { summarizeSeat, tripDuration } from '../domain/seat'
 import {
@@ -14,10 +15,7 @@ import {
   type Trip,
 } from '../domain/types'
 
-export function destLabel(d: string | null): string {
-  if (!d) return ''
-  return d.endsWith('방향') ? d : `${d}행`
-}
+export { destLabel } from '../domain/stations'
 
 export function Chip<T extends string | number>(props: {
   value: T
@@ -103,7 +101,7 @@ export function seatText(trip: Trip, events: SeatEvent[]): string[] {
   const s = summarizeSeat(trip, events)
   if (trip.initialSeat) out.push(trip.initialSeat === 'seated' ? '앉아서 탑승' : '서서 탑승')
   for (const e of [...events].sort((a, b) => a.createdAt - b.createdAt)) {
-    out.push(`${[e.time, e.place].filter(Boolean).join(' ')} ${e.state === 'seated' ? '착석' : '일어섬'}`.trim())
+    out.push(`${[e.time, e.place].filter(Boolean).join(' ')} ${e.state === 'seated' ? '착석' : '일어섬'}${e.note ? ` (${e.note})` : ''}`.trim())
   }
   if (s.minutesToFirstSeat !== null) out.push(`착석까지 ${s.minutesToFirstSeat}분`)
   return out
@@ -139,7 +137,7 @@ export function TripCard(props: { trip: Trip; events: SeatEvent[]; to?: string }
       <div className="card-main">
         <strong>{t.line ?? (t.mode === 'subway' ? '노선 미기록' : '버스 번호 미기록')}</strong>
         {route && <span> · {route}</span>}
-        {t.trainDestination && <span> · {destLabel(t.trainDestination)}</span>}
+        {formatTrainRoute(t.trainOrigin, t.trainDestination) && <span> · {formatTrainRoute(t.trainOrigin, t.trainDestination)}</span>}
         {t.service && t.service !== 'normal' && <span className="badge">{SERVICE_LABEL[t.service]}</span>}
       </div>
       {pos.length > 0 && <div className="card-sub">{pos.join(' · ')}</div>}
