@@ -104,7 +104,7 @@ interface ClauseResult {
   crowding: Crowding | null
 }
 
-function neutralizeClause(orig: string): ClauseResult {
+function neutralizeClause(orig: string, exclude: RegExp | null): ClauseResult {
   const c = orig.trim()
   const seatFight = /자리\s*(?:를\s*)?(?:뺏|빼앗)|처먹|밀쳐서.*자리|먼저\s*앉/.test(c)
 
@@ -113,7 +113,8 @@ function neutralizeClause(orig: string): ClauseResult {
     if (seatFight) return { text: '착석 경쟁이 치열했음', crowding: null }
     return { text: null, reason: ABUSIVE.test(c) ? 'abusive' : 'person', crowding: null }
   }
-  if (OFFTOPIC_STRONG.test(c) && !INCIDENT.test(c)) return { text: null, reason: 'offtopic', crowding: null }
+  // 사용자가 직접 지정한 개인 단어(이 기기에만 저장)가 들어 있으면 교통 사실이 아닌 한 문장째 제외
+  if ((OFFTOPIC_STRONG.test(c) || exclude?.test(c)) && !INCIDENT.test(c)) return { text: null, reason: 'offtopic', crowding: null }
 
   const stripped = stripNoise(c)
   if (stripped.length < 2 || !/[가-힣A-Za-z0-9]/.test(stripped)) return { text: null, reason: 'empty', crowding: null }
@@ -145,16 +146,27 @@ export function splitClauses(raw: string): string[] {
     .filter(Boolean)
 }
 
-export function sanitizeNote(raw: string | null | undefined, ctx: { trainDestination?: string | null } = {}): SanitizeResult {
+/** 사용자가 입력한 제외 단어 목록을 정규식으로 만든다 (정규식 특수문자는 이스케이프) */
+export function excludeRegex(words: string[] | undefined): RegExp | null {
+  const list = (words ?? []).map((w) => w.trim()).filter(Boolean)
+  if (list.length === 0) return null
+  return new RegExp(list.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'))
+}
+
+export function sanitizeNote(
+  raw: string | null | undefined,
+  ctx: { trainDestination?: string | null; excludeWords?: string[] } = {},
+): SanitizeResult {
   const out: SanitizeResult = { text: null, dropped: [], crowding: null, incident: null, delayMinutes: null }
   if (!raw || !raw.trim()) return out
+  const exclude = excludeRegex(ctx.excludeWords)
   const clauses = splitClauses(raw)
   const kept: string[] = []
   const crowdSet = new Set<Crowding>()
   let personDrops = 0
 
   for (const clause of clauses) {
-    const r = neutralizeClause(clause)
+    const r = neutralizeClause(clause, exclude)
     if (r.crowding) crowdSet.add(r.crowding)
     if (r.text) kept.push(r.text)
     else {

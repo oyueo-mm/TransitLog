@@ -110,4 +110,20 @@ test.describe('초기 이관 (가상 217건)', () => {
     expect(trips).toHaveLength(21)
     expect(trips.filter((t) => t.note === '내가 직접 고친 메모')).toHaveLength(1)
   })
+
+  test('제외할 개인 단어는 이 기기에만 저장되고 해당 비고 문장은 가져오지 않는다', async ({ page }) => {
+    const notes = ['2026-03-02 월요일', '08:00 1호선, 가역->나역, 다->라행', '3-2, 왼쪽, 1번째, 서서감', '라마바 행사 이야기를 열차 안에서 함', ''].join('\n')
+    await gotoApp(page, 'import')
+    await page.getByLabel(/이 단어가 들어 있는 비고 문장은 가져오지 않습니다/).fill('라마바')
+    await page.getByLabel('노트 내용을 직접 붙여 넣을 수도 있습니다').fill(notes)
+    await page.getByRole('button', { name: '붙여 넣은 내용 분석' }).click()
+    await page.getByRole('button', { name: /08:00/ }).click()
+    await expect(page.getByLabel('비고', { exact: true })).toHaveValue('')
+    await expect(page.locator('.dropped')).toContainText('라마바 행사')
+
+    // 새로고침해도 입력한 단어가 남아 있다 (IndexedDB 설정)
+    await page.reload()
+    await expect(page.getByLabel(/이 단어가 들어 있는 비고 문장은 가져오지 않습니다/)).toHaveValue('라마바')
+    expect((await readDb<{ key: string }>(page, 'settings')).some((r) => r.key === 'import.excludeWords')).toBe(true)
+  })
 })

@@ -158,6 +158,25 @@ describe('줄 이어 붙이기', () => {
   })
 })
 
+describe('제외 단어(사용자 지정)', () => {
+  it('지정한 단어가 든 문장은 제외하고 교통 사실은 남긴다', () => {
+    const r = sanitizeNote('라마바 행사 때문에 열차를 탐. 승강장이 8번에서 9번으로 바뀜', { excludeWords: ['라마바'] })
+    expect(r.text).toBe('승강장이 8번에서 9번으로 바뀜')
+    expect(r.dropped.some((d) => d.reason === 'offtopic' && d.text.includes('라마바'))).toBe(true)
+  })
+  it('정규식 특수문자가 들어간 단어도 안전하게 처리', () => {
+    expect(sanitizeNote('열차 (a+b) 이야기', { excludeWords: ['(a+b)'] }).text).toBeNull()
+  })
+  it('지연·사고 정보가 있는 문장은 남긴다', () => {
+    expect(sanitizeNote('라마바 때문에 열차 지연됨', { excludeWords: ['라마바'] }).incident).toBe('열차 지연')
+  })
+  it('파서에 전달되어 비고에 반영', () => {
+    const t = ['2026-03-02 월요일', '08:00 1호선, 가역->나역, 다->라행', '3-2, 왼쪽, 1번째, 서서감', '라마바 행사 이야기를 열차 안에서 함', ''].join('\n')
+    expect(parseNotes(t, { excludeWords: ['라마바'] }).candidates[0].trip.note).toBeNull()
+    expect(parseNotes(t).candidates[0].trip.note).not.toBeNull()
+  })
+})
+
 describe('비고 순화', () => {
   it('요구된 변환 예시', () => {
     expect(sanitizeNote('사람 개많음').text).toBe('승차 당시 매우 혼잡했음')

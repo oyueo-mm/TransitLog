@@ -102,7 +102,12 @@ function cleanPlace(s: string | undefined): string | null {
   return !v || isUnknown(v) ? null : v
 }
 
-export function parseNotes(text: string): ParseResult {
+export interface ParseOptions {
+  /** 비고에서 문장째 제외할 개인 단어 (사용자가 직접 입력, 저장소에는 포함하지 않음) */
+  excludeWords?: string[]
+}
+
+export function parseNotes(text: string, opts: ParseOptions = {}): ParseResult {
   const lines = normalizeText(text)
     .split('\n')
     .map((l) => l.replace(/\s+$/g, '').trim())
@@ -188,7 +193,7 @@ export function parseNotes(text: string): ParseResult {
   }
   flush()
 
-  const candidates = blocks.map((b, i) => parseBlock(b, i))
+  const candidates = blocks.map((b, i) => parseBlock(b, i, opts))
 
   // 파일 안 중복 표시
   const seen = new Set<string>()
@@ -237,7 +242,7 @@ function parseHeaderTimes(header: string): HeaderInfo {
 const EXPRESS = /\(?\s*급행\s*\)?/
 const BUS_NO = /^(\d{1,4}(?:-\d{1,2})?[A-Za-z]?)\s*번?(?:\s*버스)?$/
 
-function parseBlock(b: Block, index: number): ImportCandidate {
+function parseBlock(b: Block, index: number, opts: ParseOptions): ImportCandidate {
   const raw = [b.header, ...b.body].join('\n')
   const trip = emptyTripDraft(b.date, 'subway')
   trip.source = 'import'
@@ -499,7 +504,7 @@ function parseBlock(b: Block, index: number): ImportCandidate {
   // ── 비고 + 순화 ──
   const noteText = [...noteParts, ...body].join('\n')
   const bodyJoined = body.join(' ')
-  const san = sanitizeNote(noteText, { trainDestination: trip.trainDestination })
+  const san = sanitizeNote(noteText, { trainDestination: trip.trainDestination, excludeWords: opts.excludeWords })
   trip.note = san.text
   trip.crowding = san.crowding
   trip.incident = san.incident

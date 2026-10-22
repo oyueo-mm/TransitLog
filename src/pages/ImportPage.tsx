@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { commitCandidates, markDuplicates, summarize, type CommitResult } from '../import/commit'
 import {
@@ -10,6 +10,7 @@ import {
 } from '../import/parser'
 import { DROP_REASON_LABEL } from '../import/sanitize'
 import { KIND_LABEL, MODE_LABEL } from '../domain/types'
+import { getSetting, setSetting } from '../db/repo'
 import { Chip, Section } from '../ui/common'
 import { TripForm } from '../ui/TripForm'
 import { destLabel } from '../ui/common'
@@ -116,9 +117,16 @@ export function ImportPage() {
   const [result, setResult] = useState<CommitResult | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [showUnattached, setShowUnattached] = useState(false)
+  const [excludeText, setExcludeText] = useState('')
+
+  useEffect(() => {
+    void getSetting<string>('import.excludeWords', '').then(setExcludeText)
+  }, [])
+  const words = () => excludeText.split(/[,\n]/).map((w) => w.trim()).filter(Boolean)
 
   const begin = async (text: string) => {
-    const p = parseNotes(text)
+    await setSetting('import.excludeWords', excludeText) // 이 기기에만 저장
+    const p = parseNotes(text, { excludeWords: words() })
     await markDuplicates(p.candidates)
     setParsed(p)
     setCands(p.candidates)
@@ -387,6 +395,13 @@ export function ImportPage() {
         PDF 또는 텍스트 파일 선택
       </button>
       {error && <p className="notice error">{error}</p>}
+      <Section title="제외할 개인 단어 (선택)">
+        <label className="field-label" htmlFor="exclude">
+          이 단어가 들어 있는 비고 문장은 가져오지 않습니다 (쉼표 또는 줄바꿈으로 구분)
+        </label>
+        <textarea id="exclude" rows={2} value={excludeText} onChange={(e) => setExcludeText(e.target.value)} placeholder="예: 약속, 과외" />
+        <p className="hint">입력한 단어는 이 기기의 브라우저에만 저장되며 서버나 저장소로 전송되지 않습니다.</p>
+      </Section>
       <Section title="텍스트 붙여넣기">
         <label className="field-label" htmlFor="paste">
           노트 내용을 직접 붙여 넣을 수도 있습니다

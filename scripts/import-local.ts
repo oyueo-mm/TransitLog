@@ -5,6 +5,7 @@
  * 결과는 private/ (gitignore) 에만 쓴다. 저장소에 개인 기록을 남기지 않는다.
  */
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import { extractPdfText, type PdfLike } from '../src/import/pdfText'
@@ -27,7 +28,11 @@ const pdf = await getDocument({ data, useSystemFonts: true, verbosity: 0 }).prom
 const res = await extractPdfText(pdf as unknown as PdfLike)
 console.log(`페이지 ${res.pages}, 추출 글자 수 ${res.chars}`)
 
-const parsed = parseNotes(res.text)
+// private/exclude-words.txt (한 줄에 한 단어, 저장소에 없음): 비고에서 문장째 제외할 개인 단어
+const excludeWords = existsSync('private/exclude-words.txt')
+  ? (await readFile('private/exclude-words.txt', 'utf8')).split('\n').map((x) => x.trim()).filter(Boolean)
+  : []
+const parsed = parseNotes(res.text, { excludeWords })
 const sum = summarize(parsed)
 console.log(JSON.stringify(sum, null, 2))
 
