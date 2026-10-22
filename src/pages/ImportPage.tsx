@@ -230,6 +230,18 @@ export function ImportPage() {
           <Link className="btn-secondary" to="/calendar">
             캘린더에서 확인
           </Link>
+          <button
+            className="btn-text"
+            onClick={() => {
+              setResult(null)
+              setParsed(null)
+              setCands([])
+              setNotice(null)
+              setStage('pick')
+            }}
+          >
+            다른 파일 가져오기
+          </button>
         </div>
       </div>
     )
@@ -366,7 +378,11 @@ export function ImportPage() {
         <strong>원본 PDF가 필요합니다.</strong> Samsung Notes 에서 내보낸 PDF를 선택해 주세요. 파일은 이 기기 안에서만 처리되며 서버로 전송되지 않습니다. 원문은 저장하지 않고,
         <strong> 정리된 기록만</strong> 저장합니다. 원본은 직접 보관해 주세요.
       </div>
-      <input ref={fileRef} type="file" accept="application/pdf,.pdf,text/plain,.txt" hidden onChange={(e) => void onFile(e.target.files?.[0])} />
+      <input ref={fileRef} type="file" accept="application/pdf,.pdf,text/plain,.txt" hidden onChange={(e) => {
+          const f = e.target.files?.[0]
+          e.target.value = '' // 같은 파일을 다시 골라도 change 가 발생하도록 초기화
+          void onFile(f)
+        }} />
       <button className="btn-primary big" onClick={() => fileRef.current?.click()}>
         PDF 또는 텍스트 파일 선택
       </button>

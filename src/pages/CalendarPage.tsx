@@ -106,25 +106,29 @@ export function CalendarPage() {
               ›
             </button>
           </div>
-          <div className="cal" role="grid" aria-label={`${cursor.y}년 ${cursor.m + 1}월 달력`}>
+          <div className="cal" role="group" aria-label={`${cursor.y}년 ${cursor.m + 1}월 달력`}>
             {WEEKDAY_NAMES.map((w) => (
-              <div key={w} className="cal-h" role="columnheader">
+              <div key={w} className="cal-h" aria-hidden="true">
                 {w}
               </div>
             ))}
             {cells.map((d, i) => {
-              if (!d) return <div key={`e${i}`} className="cal-c empty" />
+              if (!d) return <div key={`e${i}`} className="cal-c empty" aria-hidden="true" />
               const c = byDate.get(d)
+              const dt = parseDate(d)
               return (
-                <button
-                  key={d}
-                  role="gridcell"
-                  className={`cal-c ${d === today ? 'today' : ''} ${c ? 'has' : ''}`}
-                  onClick={() => nav(`/day/${d}`)}
-                  aria-label={`${parseDate(d).getMonth() + 1}월 ${parseDate(d).getDate()}일${c ? `, 탑승 ${c.ride}건${c.other ? `, 기타 ${c.other}건` : ''}` : ', 기록 없음'}`}
-                >
-                  <span className="n">{parseDate(d).getDate()}</span>
-                  {c && <span className="dots">{c.ride > 0 ? c.ride : '·'}</span>}
+                <button key={d} type="button" className={`cal-c ${d === today ? 'today' : ''} ${c ? 'has' : ''}`} onClick={() => nav(`/day/${d}`)}>
+                  <span className="n" aria-hidden="true">
+                    {dt.getDate()}
+                  </span>
+                  <span className="sr-only">
+                    {dt.getMonth() + 1}월 {dt.getDate()}일, {c ? `탑승 ${c.ride}건${c.other ? `, 기타 ${c.other}건` : ''}` : '기록 없음'}
+                  </span>
+                  {c && (
+                    <span className="dots" aria-hidden="true">
+                      {c.ride > 0 ? c.ride : '·'}
+                    </span>
+                  )}
                 </button>
               )
             })}
@@ -134,7 +138,9 @@ export function CalendarPage() {
             <button className="btn-text" onClick={() => nav(`/day/${today}`)}>
               오늘로 이동
             </button>
-            <Link to={`/trip/new?date=${addDays(today, 0)}`}>+ 기록 추가</Link>
+            <Link className="btn-small" to={`/trip/new?date=${addDays(today, 0)}`}>
+              + 기록 추가
+            </Link>
           </div>
         </Section>
       ) : (
