@@ -44,6 +44,18 @@ test.describe('하루 이동 타임라인', () => {
       expect(x).toBeCloseTo(start * ppm, 1)
       expect(w).toBeCloseTo((end - start) * ppm, 1)
     }
+    // 각 항목의 중심(막대+레이블 영역의 중심)을 눌러도 그 항목이 눌린다 (글꼴 폭이 달라도 눌림 영역이 어긋나지 않음)
+    const wrong = await page.evaluate(() => {
+      const out: string[] = []
+      for (const g of document.querySelectorAll<SVGGElement>('svg.tl-svg g.tl-item')) {
+        g.scrollIntoView({ block: 'center', inline: 'center' })
+        const r = g.getBoundingClientRect()
+        const el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+        if (el?.closest('g.tl-item') !== g) out.push(g.getAttribute('data-trip-id') ?? '?')
+      }
+      return out
+    })
+    expect(wrong).toEqual([])
     // 1호선이 같은 날 두 번 → 두 막대
     await expect(svg.locator('g.tl-item[aria-label^="1호선"]')).toHaveCount(2)
     await expect(page.getByTestId('tl-untimed')).toHaveCount(0)
@@ -206,5 +218,31 @@ test.describe('하루 이동 타임라인', () => {
     const b = await tl.boundingBox()
     expect(b!.y).toBeGreaterThan(a!.y)
     await expect(page.getByTestId('day-timeline')).toContainText('1호선')
+  })
+
+  test('글꼴이 달라져 글자 폭이 달라도 막대를 눌러 상세를 열 수 있다 (CI 의 Linux 글꼴 재현)', async ({ page }) => {
+    await page.addInitScript(() => {
+      const st = document.createElement('style')
+      st.textContent = "body, svg text { font-family: 'Courier New', monospace !important; }"
+      document.documentElement.appendChild(st)
+    })
+    const s = seed()
+    await restoreBackup(page, s)
+    await openDay(page)
+    for (const t of [s.a, s.b, s.c, s.d]) {
+      await page.locator(`g.tl-item[data-trip-id="${t.id}"]`).click({ timeout: 5000 })
+      await expect(page.getByTestId('tl-detail')).toBeVisible()
+    }
+    const wrong = await page.evaluate(() => {
+      const out: string[] = []
+      for (const g of document.querySelectorAll<SVGGElement>('svg.tl-svg g.tl-item')) {
+        g.scrollIntoView({ block: 'center', inline: 'center' })
+        const r = g.getBoundingClientRect()
+        const el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+        if (el?.closest('g.tl-item') !== g) out.push(g.getAttribute('data-trip-id') ?? '?')
+      }
+      return out
+    })
+    expect(wrong).toEqual([])
   })
 })

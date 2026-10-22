@@ -58,6 +58,26 @@ describe('타임라인 좌표', () => {
     expect(LANE_H).toBeGreaterThanOrEqual(44)
   })
 
+  it('눌림 영역은 막대 위 레이블까지 덮고(글꼴이 더 넓어도), 이웃과 겹치지 않는다', () => {
+    const trips = [trip({ line: '2호선', boardTime: '12:00', alightTime: '12:30' }), trip({ line: '2호선', boardTime: '12:20', alightTime: '12:25' }), trip({ line: '2호선', boardTime: '15:00', alightTime: '15:10' })]
+    for (const measure of [undefined, (s: string) => s.length * 20]) {
+      for (const grp of layoutTimeline(buildTimeline(trips, []), 0.35, measure)) {
+        for (const l of grp.items) {
+          expect(l.hitX).toBeLessThanOrEqual(l.x + 0.001)
+          expect(l.hitX + l.hitW).toBeGreaterThanOrEqual(Math.min(l.x + l.labelW, l.hitX + l.hitW))
+          // 항목 전체(막대+레이블)의 중심이 눌림 영역 안에 있다 → 중심을 눌러도 이 항목이 눌린다
+          const cx = (Math.min(l.x, l.hitX) + Math.max(l.x + l.w, l.x + l.labelW)) / 2
+          expect(cx).toBeGreaterThanOrEqual(l.hitX)
+          expect(cx).toBeLessThanOrEqual(l.hitX + l.hitW)
+        }
+        for (let lane = 0; lane < grp.lanes; lane++) {
+          const row = grp.items.filter((i) => i.lane === lane).sort((a, b) => a.hitX - b.hitX)
+          for (let i = 1; i < row.length; i++) expect(row[i].hitX).toBeGreaterThanOrEqual(row[i - 1].hitX + row[i - 1].hitW - 0.001)
+        }
+      }
+    }
+  })
+
   it('fitScale 은 범위를 컨테이너 폭에 맞추고, 눈금은 폭에 맞춰 성기게 나온다', () => {
     expect(fitScale(1440, 0, 1440)).toBe(1)
     const sparse = ticksFor(1440, 0.25)

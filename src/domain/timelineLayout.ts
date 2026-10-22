@@ -94,7 +94,7 @@ const POINT_R = 11
  * 같은 노선 행 안에서 겹치는 막대는 아래 레인으로 내려 모두 보이게 한다.
  * 레인 배치는 막대뿐 아니라 레이블이 차지하는 폭도 함께 고려해 글자가 겹치지 않게 한다.
  */
-export function layoutTimeline(model: TimelineModel, pxPerMin: number): LayoutGroup[] {
+export function layoutTimeline(model: TimelineModel, pxPerMin: number, measure: (s: string) => number = textWidth): LayoutGroup[] {
   const groups = new Map<string, TimelineItem[]>()
   for (const it of model.items) {
     const arr = groups.get(it.group)
@@ -116,7 +116,7 @@ export function layoutTimeline(model: TimelineModel, pxPerMin: number): LayoutGr
       const isPoint = it.start === it.end
       const x = isPoint ? xOf(it.start, pxPerMin) - POINT_R : xOf(it.start, pxPerMin)
       const w = isPoint ? POINT_R * 2 : Math.max(2, xOf(it.end, pxPerMin) - xOf(it.start, pxPerMin))
-      const labelW = textWidth(labelOf(it))
+      const labelW = measure(labelOf(it))
       const extent = Math.max(x + w, x + labelW) + 4
       let lane = laneRight.findIndex((r) => r <= x)
       if (lane < 0) {
@@ -126,18 +126,20 @@ export function layoutTimeline(model: TimelineModel, pxPerMin: number): LayoutGr
       laneRight[lane] = extent
       placed.push({ item: it, lane, x, w, hitX: x, hitW: w, labelW })
     }
-    // 터치 영역: 최소 MIN_TOUCH 로 넓히되 같은 레인의 이웃 막대와 겹치지 않게 중간에서 나눈다
+    // 터치 영역: 최소 MIN_TOUCH 로 넓히고, 막대 위 레이블까지 덮어 항목 전체가 하나의 눌림 영역이 되게 한다.
+    // 같은 레인의 이웃 영역과는 겹치지 않게 중간에서 나눈다(레이블은 레인 배치에서 이웃과 겹치지 않도록 이미 비워 둠).
     const lanes = Math.max(1, laneRight.length)
     for (let l = 0; l < lanes; l++) {
       const row = placed.filter((p) => p.lane === l).sort((a, b) => a.x - b.x)
       row.forEach((p, i) => {
         const pad = Math.max(0, (MIN_TOUCH - p.w) / 2)
-        let left = p.x - pad
-        let right = p.x + p.w + pad
+        const end = (q: LayoutItem) => Math.max(q.x + q.w, q.x + q.labelW)
         const prev = row[i - 1]
         const next = row[i + 1]
-        if (prev) left = Math.max(left, (prev.x + prev.w + p.x) / 2)
-        if (next) right = Math.min(right, (p.x + p.w + next.x) / 2)
+        let left = p.x - pad
+        let right = Math.max(p.x + p.w + pad, end(p))
+        if (prev) left = Math.max(left, (end(prev) + p.x) / 2)
+        if (next) right = Math.min(right, (end(p) + next.x) / 2)
         p.hitX = Math.min(left, p.x)
         p.hitW = Math.max(right - p.hitX, Math.min(p.w, 1))
       })

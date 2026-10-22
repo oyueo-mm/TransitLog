@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { colorKey, lineColor } from '../domain/lineColors'
 import { buildTimeline, describeItem, summarizeDay, type SeatSegState, type TimelineItem } from '../domain/timeline'
-import { AXIS_H, LANE_H, chartHeight, fitScale, labelOf, layoutTimeline, ticksFor, xOf, type LayoutItem } from '../domain/timelineLayout'
+import { AXIS_H, LANE_H, chartHeight, fitScale, labelOf, layoutTimeline, textWidth, ticksFor, xOf, type LayoutItem } from '../domain/timelineLayout'
 import { formatDuration } from '../domain/time'
 import type { SeatEvent, Trip } from '../domain/types'
 import { useNow } from './hooks'
@@ -18,6 +18,22 @@ const BAR_H = 24
 const ZOOM_STEP = 1.6
 const MAX_FACTOR = 14
 const LABEL_COL = 76
+
+/** 레이블 폭을 실제 글꼴로 측정한다(기기·글꼴마다 한글 폭이 달라 추정값만으로는 겹치거나 눌림 영역이 어긋남). 측정할 수 없으면 추정값 */
+let ctx: CanvasRenderingContext2D | null | undefined
+function measureLabel(s: string): number {
+  if (ctx === undefined) {
+    try {
+      ctx = document.createElement('canvas').getContext('2d')
+    } catch {
+      ctx = null
+    }
+  }
+  if (!ctx) return textWidth(s)
+  ctx.font = `600 12px ${getComputedStyle(document.body).fontFamily || 'sans-serif'}`
+  const w = ctx.measureText(s).width
+  return w > 0 ? Math.ceil(w) + 6 : textWidth(s)
+}
 
 type ViewMode = 'focus' | 'full'
 
@@ -176,7 +192,7 @@ export function DayTimeline({ date, trips, events, today }: { date: string; trip
     return view === 'full' ? fitScale(w, 0, model.axisEnd) : fitScale(w, focus.start, focus.end)
   }, [width, view, model.axisEnd, focus.start, focus.end])
   const pxPerMin = baseScale * factor
-  const groups = useMemo(() => layoutTimeline(model, pxPerMin), [model, pxPerMin])
+  const groups = useMemo(() => layoutTimeline(model, pxPerMin, measureLabel), [model, pxPerMin])
   const height = chartHeight(groups)
   const totalW = Math.max(width, Math.ceil(model.axisEnd * pxPerMin))
   const ticks = useMemo(() => ticksFor(model.axisEnd, pxPerMin), [model.axisEnd, pxPerMin])
