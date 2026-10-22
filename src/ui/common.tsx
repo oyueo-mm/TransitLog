@@ -108,7 +108,7 @@ export function seatText(trip: Trip, events: SeatEvent[]): string[] {
   return out
 }
 
-export function TripCard(props: { trip: Trip; events: SeatEvent[]; to?: string }) {
+export function TripCard(props: { trip: Trip; events: SeatEvent[]; to?: string; linkState?: unknown }) {
   const { trip: t, events } = props
   const dur = tripDuration(t)
   const seat = seatText(t, events)
@@ -158,7 +158,7 @@ export function TripCard(props: { trip: Trip; events: SeatEvent[]; to?: string }
     </>
   )
   return props.to ? (
-    <Link className="card" to={props.to}>
+    <Link className="card" to={props.to} state={props.linkState}>
       {body}
     </Link>
   ) : (

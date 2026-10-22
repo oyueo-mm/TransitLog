@@ -101,6 +101,7 @@ export async function expectLayoutOk(page: Page, label: string) {
   const wide = await page.evaluate((limit) => {
     const out: string[] = []
     for (const el of document.querySelectorAll<HTMLElement>('main *')) {
+      if (el.closest('.tl-scroller')) continue // 가로로 스크롤되는 그래프 내부
       const r = el.getBoundingClientRect()
       if (r.width > 0 && r.right > limit + 1 && getComputedStyle(el).position !== 'fixed') out.push(`${el.tagName.toLowerCase()}.${String(el.className).slice(0, 30)}[${el.getAttribute('aria-label') ?? el.textContent?.trim().slice(0, 12) ?? ''}] right=${Math.round(r.right)}`)
     }
@@ -126,6 +127,7 @@ export async function expectLayoutOk(page: Page, label: string) {
     const w = document.documentElement.clientWidth
     const out: string[] = []
     for (const el of document.querySelectorAll<HTMLElement>('main *')) {
+      if (el.closest('.tl-scroller')) continue
       const r = el.getBoundingClientRect()
       if (r.width > 0 && r.right > w + 1 && getComputedStyle(el).position !== 'fixed') out.push(`${el.tagName}.${el.className}`.slice(0, 40))
     }

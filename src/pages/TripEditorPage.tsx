@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams, useSearchParams, Link } from 'react-router-dom'
+import { useLocation, useNavigate, useParams, useSearchParams, Link } from 'react-router-dom'
 import { db } from '../db/db'
 import { deleteTrip, saveTemplate, saveTrip, templateFromTrip, defaultTemplateName } from '../db/repo'
 import { emptyTripDraft, type SeatEventDraft, type Trip, type TripDraft } from '../domain/types'
@@ -35,6 +35,9 @@ export function cloneAsTemplate(t: Trip, date: string): TripDraft {
 export function TripEditorPage() {
   const { id } = useParams()
   const nav = useNavigate()
+  // 검색 결과·타임라인에서 들어왔으면 저장·삭제 뒤 그 화면으로 돌아간다
+  const from = (useLocation().state as { from?: unknown } | null)?.from
+  const returnTo = typeof from === 'string' && from.startsWith('/') ? from : null
   const [sp] = useSearchParams()
   const trips = useAllTrips()
   const isNew = !id
@@ -89,7 +92,7 @@ export function TripEditorPage() {
       const base = existing ? { ...existing, ...draft } : draft
       const saved = await saveTrip(base as Trip | TripDraft, draft.kind === 'ride' ? events : [])
       toast('저장했습니다')
-      nav(`/day/${saved.date}`, { replace: true })
+      nav(returnTo ?? `/day/${saved.date}`, { replace: true })
     } catch (e) {
       setError(`저장하지 못했습니다: ${(e as Error).message}`)
     } finally {
@@ -102,7 +105,7 @@ export function TripEditorPage() {
     if (!window.confirm('이 기록을 삭제할까요? 삭제한 기록은 되돌릴 수 없습니다. (백업 파일이 있다면 복원할 수 있습니다)')) return
     await deleteTrip(existing.id)
     toast('삭제했습니다')
-    nav(`/day/${existing.date}`, { replace: true })
+    nav(returnTo ?? `/day/${existing.date}`, { replace: true })
   }
 
   const asTemplate = async () => {

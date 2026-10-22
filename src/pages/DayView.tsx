@@ -5,6 +5,7 @@ import { dayTotals } from '../domain/seat'
 import { sortTrips, saveDay } from '../db/repo'
 import { PURPOSE_LABEL, type DayLog, type Purpose } from '../domain/types'
 import { Chip, Empty, Section, TripCard } from '../ui/common'
+import { DayTimeline } from '../ui/DayTimeline'
 import { TimeInput } from '../ui/TimeInput'
 import { useAllEvents, useDay, useTripsOn } from '../ui/hooks'
 
@@ -129,6 +130,10 @@ export function DayView({ date, showNav }: { date: string; showNav?: boolean }) 
             ))}
           </div>
         )}
+      </Section>
+
+      <Section title="하루 이동 타임라인">
+        {trips === undefined || events === undefined ? <Empty>불러오는 중…</Empty> : <DayTimeline date={date} trips={sorted} events={events} today={todayStr()} />}
       </Section>
     </div>
   )

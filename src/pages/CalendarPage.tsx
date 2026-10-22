@@ -1,9 +1,8 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { addDays, dateStr, parseDate, todayStr, WEEKDAY_NAMES } from '../domain/time'
-import { sortTrips } from '../db/repo'
-import { KIND_LABEL, MODE_LABEL, PURPOSE_LABEL, type Mode, type Purpose, type RecordKind, type Trip } from '../domain/types'
-import { Chip, Empty, Section, TripCard } from '../ui/common'
+import { Empty, Section } from '../ui/common'
+import { SearchPanel } from '../ui/SearchPanel'
 import { useAllEvents, useAllTrips } from '../ui/hooks'
 import { DayView } from './DayView'
 
@@ -17,28 +16,30 @@ function monthGrid(year: number, month: number): Array<string | null> {
   return cells
 }
 
-function matches(t: Trip, q: string): boolean {
-  if (!q) return true
-  const hay = [t.line, t.boardPlace, t.alightPlace, t.trainOrigin, t.trainDestination, t.incident, t.note, t.date].filter(Boolean).join(' ').toLowerCase()
-  return q
-    .toLowerCase()
-    .split(/\s+/)
-    .every((w) => hay.includes(w))
-}
-
 export function CalendarPage() {
   const nav = useNavigate()
   const trips = useAllTrips()
   const events = useAllEvents()
-  const [view, setView] = useState<'cal' | 'list'>('cal')
+  // 상세 화면에서 돌아오면 보던 탭(달력/검색)으로 복귀
+  const [view, setViewState] = useState<'cal' | 'list'>(() => {
+    try {
+      return sessionStorage.getItem('transitlog.calview') === 'list' ? 'list' : 'cal'
+    } catch {
+      return 'cal'
+    }
+  })
+  const setView = (v: 'cal' | 'list') => {
+    setViewState(v)
+    try {
+      sessionStorage.setItem('transitlog.calview', v)
+    } catch {
+      /* 저장하지 못해도 동작한다 */
+    }
+  }
   const [cursor, setCursor] = useState(() => {
     const d = new Date()
     return { y: d.getFullYear(), m: d.getMonth() }
   })
-  const [q, setQ] = useState('')
-  const [mode, setMode] = useState<Mode | null>(null)
-  const [kind, setKind] = useState<RecordKind | null>(null)
-  const [purpose, setPurpose] = useState<Purpose | null>(null)
 
   const byDate = useMemo(() => {
     const m = new Map<string, { ride: number; other: number }>()
@@ -50,28 +51,6 @@ export function CalendarPage() {
     }
     return m
   }, [trips])
-  const evByTrip = useMemo(() => {
-    const m = new Map<string, NonNullable<typeof events>>()
-    for (const e of events ?? []) m.set(e.tripId, [...(m.get(e.tripId) ?? []), e])
-    return m
-  }, [events])
-
-  const filtered = useMemo(
-    () =>
-      sortTrips(
-        (trips ?? []).filter(
-          (t) => matches(t, q) && (!mode || t.mode === mode) && (!kind || t.kind === kind) && (!purpose || t.purpose === purpose),
-        ),
-      ).sort((a, b) => b.date.localeCompare(a.date)),
-    [trips, q, mode, kind, purpose],
-  )
-  // sortTrips 는 시각 오름차순이므로 같은 날짜 안에서는 시각 오름차순을 유지한다
-  const grouped = useMemo(() => {
-    const g = new Map<string, Trip[]>()
-    for (const t of filtered) g.set(t.date, [...(g.get(t.date) ?? []), t])
-    return [...g.entries()]
-  }, [filtered])
-
   const today = todayStr()
   const cells = monthGrid(cursor.y, cursor.m)
   const shift = (n: number) => {
@@ -145,53 +124,7 @@ export function CalendarPage() {
         </Section>
       ) : (
         <Section>
-          <div className="field">
-            <label className="field-label" htmlFor="q">
-              검색
-            </label>
-            <input id="q" type="search" placeholder="노선·역·행선지·비고" value={q} onChange={(e) => setQ(e.target.value)} />
-          </div>
-          <div className="chips filter" role="group" aria-label="교통수단 필터">
-            {(Object.keys(MODE_LABEL) as Mode[]).map((m) => (
-              <Chip key={m} value={m} selected={mode === m} onSelect={() => setMode(mode === m ? null : m)} small>
-                {MODE_LABEL[m]}
-              </Chip>
-            ))}
-          </div>
-          <div className="chips filter" role="group" aria-label="기록 종류 필터">
-            {(Object.keys(KIND_LABEL) as RecordKind[]).map((k) => (
-              <Chip key={k} value={k} selected={kind === k} onSelect={() => setKind(kind === k ? null : k)} small>
-                {KIND_LABEL[k]}
-              </Chip>
-            ))}
-          </div>
-          <div className="chips filter" role="group" aria-label="목적 필터">
-            {(Object.keys(PURPOSE_LABEL) as Purpose[]).map((p) => (
-              <Chip key={p} value={p} selected={purpose === p} onSelect={() => setPurpose(purpose === p ? null : p)} small>
-                {PURPOSE_LABEL[p]}
-              </Chip>
-            ))}
-          </div>
-          <p className="muted small">{filtered.length}건</p>
-          {filtered.length === 0 ? (
-            <Empty>조건에 맞는 기록이 없습니다.</Empty>
-          ) : (
-            grouped.slice(0, 40).map(([date, list]) => (
-              <div key={date} className="group">
-                <h3>
-                  <Link to={`/day/${date}`}>
-                    {date} ({WEEKDAY_NAMES[parseDate(date).getDay()]})
-                  </Link>
-                </h3>
-                <div className="timeline">
-                  {list.map((t) => (
-                    <TripCard key={t.id} trip={t} events={evByTrip.get(t.id) ?? []} to={`/trip/${t.id}`} />
-                  ))}
-                </div>
-              </div>
-            ))
-          )}
-          {grouped.length > 40 && <p className="muted small">최근 40일치만 표시합니다. 검색어나 필터로 좁혀 보세요.</p>}
+          {trips && events ? <SearchPanel trips={trips} events={events} /> : <Empty>불러오는 중…</Empty>}
         </Section>
       )}
     </div>
