@@ -27,6 +27,19 @@ beforeEach(() => {
 })
 
 describe('IndexedDB 저장·조회·수정·삭제', () => {
+  it('관찰·놓침의 과거 ongoing 값은 빠른 기록에서 제외하고 저장 시 정리한다', async () => {
+    const ride = await startRide({ mode: 'subway' }, [], db)
+    const observed = { ...ride, id: 'legacy-observed', kind: 'observed' as const, createdAt: ride.createdAt + 1 }
+    // Direct insert represents data saved by an older version or restored backup.
+    await db.trips.put(observed)
+    await db.trips.put({ ...observed, id: 'legacy-missed', kind: 'missed' })
+    expect((await ongoingTrip(db))?.id).toBe(ride.id)
+    const saved = await saveTrip(observed, undefined, db)
+    expect(saved.ongoing).toBe(false)
+    expect(await tripsOnDate(ride.date, db)).toHaveLength(3)
+    await endRide(ride.id, {}, db)
+    expect(await ongoingTrip(db)).toBeUndefined()
+  })
   it('저장한 기록이 연결을 닫았다 다시 열어도(재접속) 그대로 있다', async () => {
     const name = db.name
     const saved = await saveTrip(
@@ -96,6 +109,22 @@ describe('IndexedDB 저장·조회·수정·삭제', () => {
 })
 
 describe('지금 탑승 · 하차 · 좌석 변화', () => {
+  it('동시 하차 요청 중 첫 요청만 저장하고 좌석·이벤트·나중 수정은 보존한다', async () => {
+    const t = await startRide({ mode: 'subway', alightPlace: '나역', initialSeat: 'standing' }, [], db)
+    await addSeatEvent(t.id, { time: '08:30', state: 'seated', place: '중간역' }, db)
+    const events = await db.seatEvents.toArray()
+    const results = await Promise.all([
+      endRide(t.id, { alightTime: '09:00' }, db),
+      endRide(t.id, { alightTime: '09:01', alightPlace: '다른역' }, db),
+    ])
+    expect(results.filter(Boolean)).toHaveLength(1)
+    const saved = (await db.trips.get(t.id))!
+    expect(saved).toMatchObject({ ongoing: false, alightTime: '09:00', alightPlace: '나역', initialSeat: 'standing', seatLogComplete: null })
+    expect(await db.seatEvents.toArray()).toEqual(events)
+    const edited = await saveTrip({ ...saved, alightTime: '09:05', alightPlace: '수정역' }, undefined, db)
+    expect(await endRide(t.id, { alightTime: '10:00' }, db)).toBeUndefined()
+    expect(await db.trips.get(t.id)).toEqual(edited)
+  })
   it('탑승 시작 → 좌석 변화 → 하차: 시각이 기록되고 소요 시간이 계산 가능', async () => {
     const t = await startRide({ mode: 'subway', line: '1호선', boardTime: '08:24', initialSeat: 'standing' }, [], db)
     expect(t.ongoing).toBe(true)

@@ -110,6 +110,7 @@ export function seatText(trip: Trip, events: SeatEvent[]): string[] {
 
 export function TripCard(props: { trip: Trip; events: SeatEvent[]; to?: string; linkState?: unknown }) {
   const { trip: t, events } = props
+  const ongoing = t.kind === 'ride' && t.ongoing
   const dur = tripDuration(t)
   const seat = seatText(t, events)
   const pos: string[] = []
@@ -125,8 +126,8 @@ export function TripCard(props: { trip: Trip; events: SeatEvent[]; to?: string; 
       <div className="card-top">
         <div className="time">
           {t.boardTime ?? '--:--'}
-          {(t.alightTime || t.ongoing) && <span className="arrow"> → </span>}
-          {t.ongoing ? <span className="live">탑승 중</span> : t.alightTime}
+          {(t.alightTime || ongoing) && <span className="arrow"> → </span>}
+          {ongoing ? <span className="live">탑승 중</span> : t.alightTime}
           {dur !== null && <span className="dur">{formatDuration(dur)}</span>}
         </div>
         <div className="badges">

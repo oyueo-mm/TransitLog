@@ -113,6 +113,7 @@ export function OngoingPanel({ trip }: { trip: Trip }) {
   const [alightTime, setAlightTime] = useState<string>(nowHm())
   const [complete, setComplete] = useState<boolean | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [finishing, setFinishing] = useState(false)
   const busy = useRef(false)
 
   const hm = nowHm()
@@ -150,14 +151,38 @@ export function OngoingPanel({ trip }: { trip: Trip }) {
 
   const seat = (state: SeatState) =>
     mutate(state === 'seated' ? '착석을 기록했습니다' : '일어섬을 기록했습니다', () => addSeatEvent(trip.id, { time: nowHm(), state, place: null, note: null }))
-  const finish = async () => {
-    await endRide(trip.id, {
-      alightPlace: canonicalName(alightPlace, known),
-      alightTime,
-      ...(complete !== null ? { seatLogComplete: complete } : {}),
-    })
-    setAlighting(false)
-    toast('하차를 기록했습니다')
+  const finish = async (place: string | null, time: string, seatLogComplete?: boolean | null) => {
+    if (busy.current) return
+    busy.current = true
+    setFinishing(true)
+    try {
+      const saved = await endRide(trip.id, {
+        alightPlace: place,
+        alightTime: time,
+        ...(seatLogComplete != null ? { seatLogComplete } : {}),
+      })
+      if (saved) {
+        setAlighting(false)
+        toast('하차를 기록했습니다')
+      }
+    } catch {
+      toast('하차를 저장하지 못했습니다. 다시 시도해 주세요.')
+    } finally {
+      busy.current = false
+      setFinishing(false)
+    }
+  }
+  const alight = () => {
+    if (busy.current) return
+    const pressedAt = nowHm()
+    const plannedPlace = trip.alightPlace?.trim()
+    if (plannedPlace) {
+      void finish(plannedPlace, pressedAt)
+    } else {
+      setAlightTime(pressedAt)
+      setAlightPlace(null)
+      setAlighting(true)
+    }
   }
   const cancel = async () => {
     if (!window.confirm('이 탑승 기록을 삭제할까요?')) return
@@ -218,7 +243,7 @@ export function OngoingPanel({ trip }: { trip: Trip }) {
               일어섰다
             </button>
           </div>
-          <button className="btn-primary big" onClick={() => (setAlightTime(nowHm()), setAlightPlace(trip.alightPlace), setAlighting(true))}>
+          <button className="btn-primary big" onClick={alight} disabled={finishing}>
             하차
           </button>
         </div>
@@ -271,10 +296,10 @@ export function OngoingPanel({ trip }: { trip: Trip }) {
             />
           )}
           <div className="grid2">
-            <button className="btn-primary" onClick={finish}>
+            <button className="btn-primary" onClick={() => void finish(canonicalName(alightPlace, known), alightTime, complete)} disabled={finishing}>
               하차 완료
             </button>
-            <button className="btn-secondary" onClick={() => setAlighting(false)}>
+            <button className="btn-secondary" onClick={() => setAlighting(false)} disabled={finishing}>
               취소
             </button>
           </div>

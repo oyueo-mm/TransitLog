@@ -18,8 +18,8 @@ export function fitScale(containerPx: number, start: number, end: number): numbe
 }
 
 /** 눈금 간격(분): 눈금 사이가 minGapPx 이상이 되는 가장 작은 값 */
-export function tickStep(pxPerMin: number, minGapPx = 48): number {
-  for (const step of [15, 30, 60, 120, 180, 360, 720]) if (step * pxPerMin >= minGapPx) return step
+export function tickStep(pxPerMin: number, minGapPx = 88): number {
+  for (const step of [10, 30, 60, 120, 180, 360, 720]) if (step * pxPerMin >= minGapPx) return step
   return 720
 }
 
@@ -29,8 +29,8 @@ export interface Tick {
   major: boolean
 }
 
-export function ticksFor(axisEnd: number, pxPerMin: number): Tick[] {
-  const step = tickStep(pxPerMin)
+export function ticksFor(axisEnd: number, pxPerMin: number, interval?: 10 | 30 | 60): Tick[] {
+  const step = interval ?? tickStep(pxPerMin)
   const out: Tick[] = []
   for (let m = 0; m <= axisEnd; m += step) {
     const day = Math.floor(m / 1440)

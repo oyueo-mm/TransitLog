@@ -41,6 +41,7 @@ export function normalizeTrip(t: Trip): Trip {
   for (const k of out.naFields) {
     ;(out as unknown as Record<string, unknown>)[k] = null
   }
+  if (out.kind !== 'ride') out.ongoing = false
   if (out.mode === 'bus') {
     out.trainOrigin = null
     out.trainDestination = null
@@ -136,9 +137,14 @@ export async function endRide(
   patch: Partial<Trip> = {},
   d: TransitDB = defaultDb,
 ): Promise<Trip | undefined> {
-  const t = await d.trips.get(id)
-  if (!t) return undefined
-  return saveTrip({ ...t, ...patch, ongoing: false, alightTime: patch.alightTime ?? nowHm() }, undefined, d)
+  const alightTime = patch.alightTime ?? nowHm()
+  // Serialize completion across rapid clicks and tabs; a second request cannot
+  // overwrite the first completion or later edits made in the trip editor.
+  return d.transaction('rw', d.trips, d.seatEvents, async () => {
+    const t = await d.trips.get(id)
+    if (!t || t.kind !== 'ride' || !t.ongoing) return undefined
+    return saveTrip({ ...t, ...patch, ongoing: false, alightTime }, undefined, d)
+  })
 }
 
 /**
@@ -226,7 +232,7 @@ export async function restoreSeatState(snap: SeatSnapshot, d: TransitDB = defaul
 
 export async function ongoingTrip(d: TransitDB = defaultDb): Promise<Trip | undefined> {
   // boolean 은 IndexedDB 키가 될 수 없으므로 인덱스 없이 필터링한다 (기록 수가 적어 충분히 빠름)
-  const all = await d.trips.filter((t) => t.ongoing === true).toArray()
+  const all = await d.trips.filter((t) => t.kind === 'ride' && t.ongoing === true).toArray()
   return all.sort((a, b) => b.createdAt - a.createdAt)[0]
 }
 

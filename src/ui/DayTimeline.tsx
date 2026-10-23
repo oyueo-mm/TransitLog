@@ -169,9 +169,11 @@ export function DayTimeline({ date, trips, events, today }: { date: string; trip
 
   const wrapRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const zoomCenter = useRef<number | null>(null)
   const [width, setWidth] = useState(0)
   const [view, setView] = useState<ViewMode>('focus')
   const [factor, setFactor] = useState(1)
+  const [interval, setInterval] = useState<10 | 30 | 60 | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   // 화면 폭(회전·창 크기 변경 포함)을 관찰해 배율을 다시 계산한다
@@ -191,18 +193,24 @@ export function DayTimeline({ date, trips, events, today }: { date: string; trip
     const w = Math.max(120, width)
     return view === 'full' ? fitScale(w, 0, model.axisEnd) : fitScale(w, focus.start, focus.end)
   }, [width, view, model.axisEnd, focus.start, focus.end])
-  const pxPerMin = baseScale * factor
+  const pxPerMin = interval ? 88 / interval : baseScale * factor
   const groups = useMemo(() => layoutTimeline(model, pxPerMin, measureLabel), [model, pxPerMin])
   const height = chartHeight(groups)
-  const totalW = Math.max(width, Math.ceil(model.axisEnd * pxPerMin))
-  const ticks = useMemo(() => ticksFor(model.axisEnd, pxPerMin), [model.axisEnd, pxPerMin])
+  const fittedFull = interval === null && view === 'full' && factor === 1
+  const totalW = Math.max(width, Math.ceil(model.axisEnd * pxPerMin) + (fittedFull ? 0 : 88))
+  const ticks = useMemo(() => ticksFor(model.axisEnd, pxPerMin, interval ?? undefined), [model.axisEnd, pxPerMin, interval])
 
   // 보기 모드·배율이 바뀌면 보이는 영역의 시작을 맞춘다
-  const scrollKey = `${view}|${factor}|${date}|${hasItems}`
+  const scrollKey = `${view}|${factor}|${interval}|${date}|${hasItems}`
   useEffect(() => {
     const sc = scrollRef.current
     if (!sc) return
-    sc.scrollLeft = view === 'full' && factor === 1 ? 0 : Math.max(0, xOf(view === 'focus' ? focus.start : 0, pxPerMin) - 8)
+    if (zoomCenter.current !== null) {
+      sc.scrollLeft = Math.max(0, zoomCenter.current * pxPerMin - sc.clientWidth / 2)
+      zoomCenter.current = null
+      return
+    }
+    sc.scrollLeft = interval === null && view === 'full' && factor === 1 ? 0 : Math.max(0, xOf(view === 'focus' ? focus.start : 0, pxPerMin) - 8)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scrollKey, width > 0])
 
@@ -218,7 +226,16 @@ export function DayTimeline({ date, trips, events, today }: { date: string; trip
     return [...m.entries()]
   }, [model.items])
 
+  const selectInterval = (next: 10 | 30 | 60) => {
+    const sc = scrollRef.current
+    zoomCenter.current = sc && interval !== null ? (sc.scrollLeft + sc.clientWidth / 2) / pxPerMin : model.items[0]?.start ?? 0
+    setInterval(next)
+  }
   const zoom = (dir: 1 | -1) => {
+    if (interval) {
+      selectInterval(dir > 0 ? interval === 60 ? 30 : 10 : interval === 10 ? 30 : 60)
+      return
+    }
     const sc = scrollRef.current
     const center = sc ? (sc.scrollLeft + sc.clientWidth / 2) / pxPerMin : 0
     const next = dir > 0 ? Math.min(MAX_FACTOR, factor * ZOOM_STEP) : Math.max(1, factor / ZOOM_STEP)
@@ -239,16 +256,17 @@ export function DayTimeline({ date, trips, events, today }: { date: string; trip
       ) : (
         <>
           <div className="tl-controls" role="group" aria-label="타임라인 보기 조절">
-            <button type="button" className={`btn-small ${view === 'full' && factor === 1 ? 'is-on' : ''}`} aria-pressed={view === 'full' && factor === 1} onClick={() => (setView('full'), setFactor(1))}>
+            {([60, 30, 10] as const).map((step) => <button key={step} type="button" className={`btn-small ${interval === step ? 'is-on' : ''}`} aria-pressed={interval === step} onClick={() => selectInterval(step)}>{step === 60 ? '1시간' : `${step}분`} 단위</button>)}
+            <button type="button" className={`btn-small ${interval === null && view === 'full' && factor === 1 ? 'is-on' : ''}`} aria-pressed={interval === null && view === 'full' && factor === 1} onClick={() => (setView('full'), setFactor(1), setInterval(null))}>
               24시간 전체
             </button>
-            <button type="button" className={`btn-small ${view === 'focus' && factor === 1 ? 'is-on' : ''}`} aria-pressed={view === 'focus' && factor === 1} disabled={!hasItems} onClick={() => (setView('focus'), setFactor(1))}>
+            <button type="button" className={`btn-small ${interval === null && view === 'focus' && factor === 1 ? 'is-on' : ''}`} aria-pressed={interval === null && view === 'focus' && factor === 1} disabled={!hasItems} onClick={() => (setView('focus'), setFactor(1), setInterval(null))}>
               이동 시간대
             </button>
-            <button type="button" className="btn-small" aria-label="축소" onClick={() => zoom(-1)} disabled={factor <= 1}>
+            <button type="button" className="btn-small" aria-label="축소" onClick={() => zoom(-1)} disabled={interval ? interval === 60 : factor <= 1}>
               −
             </button>
-            <button type="button" className="btn-small" aria-label="확대" onClick={() => zoom(1)} disabled={factor >= MAX_FACTOR}>
+            <button type="button" className="btn-small" aria-label="확대" onClick={() => zoom(1)} disabled={interval ? interval === 10 : factor >= MAX_FACTOR}>
               ＋
             </button>
             <button type="button" className="btn-small" aria-label="왼쪽으로 이동" onClick={() => pan(-1)}>
@@ -334,7 +352,7 @@ export function DayTimeline({ date, trips, events, today }: { date: string; trip
                       </g>
                     )}
                     {ticks.map((t) => (
-                      <text key={`l${t.minute}`} x={xOf(t.minute, pxPerMin) + 3} y={height - 9} className="tl-axis" fill="#566073" textAnchor="start">
+                      <text key={`l${t.minute}`} x={xOf(t.minute, pxPerMin) + (t.minute === model.axisEnd ? -3 : 3)} y={height - 9} className="tl-axis" fill="#566073" textAnchor={t.minute === model.axisEnd ? 'end' : 'start'}>
                         {t.label}
                       </text>
                     ))}

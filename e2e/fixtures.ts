@@ -151,9 +151,10 @@ export async function setTime(scope: Page | Locator, label: string, hhmm: string
   const ap = h >= 12 ? '오후' : '오전'
   const h12 = h % 12 === 0 ? 12 : h % 12
   const group = scope.getByRole('group', { name: label, exact: true })
-  await group.getByRole('button', { name: ap, exact: true }).click()
-  await group.getByLabel(`${label} 시`, { exact: true }).selectOption(String(h12))
-  await group.getByLabel(`${label} 분`, { exact: true }).selectOption(String(m).padStart(2, '0'))
+  for (const [part, value] of [['오전/오후', ap], ['시', String(h12)], ['분', String(m).padStart(2, '0')]]) {
+    const wheel = group.getByRole('listbox', { name: `${label} ${part}`, exact: true })
+    await wheel.getByRole('option', { name: value, exact: true }).click()
+  }
 }
 
 /** 시각 입력이 보여 주는 값('오전 08:30') */

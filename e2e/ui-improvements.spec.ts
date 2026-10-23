@@ -1,0 +1,57 @@
+import { expect, test } from '@playwright/test'
+import { expectLayoutOk, fakeTrip, gotoApp, readDb, restoreBackup, setTime } from './fixtures'
+
+test('하루 기록은 접혀 시작하고 휠 편집·완료·새로고침 후 시간을 유지한다', async ({ page }) => {
+  await gotoApp(page, 'day/2026-03-02')
+  const summary = page.getByRole('button', { name: /집 출발/ })
+  await expect(summary).toHaveAttribute('aria-expanded', 'false')
+  await expect(page.getByRole('listbox')).toHaveCount(0)
+  await summary.click()
+  await setTime(page, '집 출발', '07:58')
+  const minutes = page.getByRole('listbox', { name: '집 출발 분', exact: true })
+  // Keyboard and physical scroll both commit one-minute changes.
+  await minutes.focus()
+  await minutes.press('ArrowDown')
+  await expect(minutes.getByRole('option', { selected: true })).toHaveText('59')
+  await minutes.evaluate(el => { el.scrollTop = 59 * 44 }) // blank + 00..58
+  await expect(minutes.getByRole('option', { selected: true })).toHaveText('58')
+  await expectLayoutOk(page, '펼친 시간 휠')
+  await page.screenshot({ path: 'test-results/screens/time-wheel-mobile.png', fullPage: true })
+  await page.getByRole('button', { name: '완료', exact: true }).click()
+  await expect(summary).toContainText('오전 07:58')
+  await expect(summary).toHaveAttribute('aria-expanded', 'false')
+  await page.reload()
+  await expect(summary).toContainText('오전 07:58')
+  expect((await readDb<{ homeDepart: string }>(page, 'days'))[0].homeDepart).toBe('07:58')
+  await summary.click()
+  await setTime(page, '집 출발', '08:10')
+  await page.getByRole('button', { name: '취소', exact: true }).click()
+  await expect(summary).toContainText('오전 07:58')
+  await expectLayoutOk(page, '접힌 하루 기록')
+})
+
+test('이전 관찰 기록은 탑승 중에서 제외하고 목록과 10분 타임라인에 남긴다', async ({ page }) => {
+  const observed = fakeTrip({ kind: 'observed', ongoing: true, line: '관찰노선', boardTime: '07:58' })
+  await restoreBackup(page, { trips: [observed] })
+  await gotoApp(page, 'quick')
+  await expect(page.getByRole('heading', { name: '빠른 기록', exact: true })).toBeVisible()
+  await gotoApp(page, 'day/2026-03-02')
+  await expect(page.locator('.card .live')).toHaveCount(0)
+  await expect(page.locator('.timeline')).toContainText('관찰노선')
+  const chart = page.getByTestId('day-timeline')
+  for (const [label, step] of [['1시간', 60], ['30분', 30], ['10분', 10]] as const) {
+    await chart.getByRole('button', { name: `${label} 단위`, exact: true }).click()
+    const scale = Number(await chart.locator('svg.tl-svg').getAttribute('data-px-per-min'))
+    expect(scale).toBeCloseTo(88 / step)
+    await expect(chart.locator('[data-kind="skipped"]')).toHaveCount(1)
+  }
+  const scroller = chart.locator('.tl-scroller')
+  expect(await scroller.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true)
+  const viewport = await scroller.boundingBox()
+  const marker = await chart.locator('[data-kind="skipped"]').boundingBox()
+  expect(marker!.x).toBeGreaterThanOrEqual(viewport!.x)
+  expect(marker!.x).toBeLessThan(viewport!.x + viewport!.width)
+  expect(await chart.locator('.tl-controls button').evaluateAll(buttons => buttons.every(el => el.scrollWidth <= el.clientWidth))).toBe(true)
+  await expectLayoutOk(page, '10분 타임라인')
+  await page.screenshot({ path: 'test-results/screens/timeline-10-minute-mobile.png', fullPage: true })
+})

@@ -3,6 +3,17 @@ import { standingMinutesOf } from './timelineHelpers'
 import { buildTimeline, describeItem, seatSegments, summarizeDay } from '../src/domain/timeline'
 import { LANE_H, fitScale, labelOf, layoutTimeline, MIN_TOUCH, ticksFor, xOf } from '../src/domain/timelineLayout'
 import { lineColor } from '../src/domain/lineColors'
+
+it('10분·30분·1시간 눈금에서도 분 단위 좌표를 유지한다', () => {
+  for (const interval of [10, 30, 60] as const) {
+    const scale = 88 / interval
+    const ticks = ticksFor(1500, scale, interval)
+    expect(ticks[1].minute - ticks[0].minute).toBe(interval)
+    expect(xOf(ticks[1].minute, scale) - xOf(ticks[0].minute, scale)).toBe(88)
+    expect(xOf(478, scale)).toBe(478 * scale)
+    expect(ticks.at(-1)?.label).toContain('익일')
+  }
+})
 import { mkEvent, mkTrip } from './helpers'
 
 const trip = (p: Parameters<typeof mkTrip>[0]) => mkTrip({ date: '2026-03-02', ...p })
