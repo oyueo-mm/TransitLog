@@ -12,6 +12,7 @@ import {
   selectLine,
   setTime,
   timeOut,
+  timeToggle,
 } from './fixtures'
 
 interface TripRow {
@@ -319,13 +320,17 @@ test.describe('승·하차 시각 입력 (모바일)', () => {
         ['승차 시각', '오전 09:24'],
         ['하차 시각', '오후 06:05'],
       ] as const) {
+        const toggle = timeToggle(page, label)
+        await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+        await expect(toggle.locator('output')).toHaveText(shown)
+        await toggle.click()
         const g = page.getByRole('group', { name: label, exact: true })
         await expect(g.locator('output')).toHaveText(shown) // 한국어 오전/오후 표기
         const geo = await g.evaluate((el, w) => {
           const box = el.getBoundingClientRect()
           const out = el.querySelector('output')!
-          const sels = Array.from(el.querySelectorAll('select'))
-          const btns = Array.from(el.querySelectorAll('.ti-ap button'))
+          const sels = Array.from(el.querySelectorAll<HTMLElement>('[role="listbox"]'))
+          const btns = Array.from(el.querySelectorAll('[role="option"][aria-selected="true"]'))
           return {
             left: box.left,
             right: box.right,
@@ -350,10 +355,15 @@ test.describe('승·하차 시각 입력 (모바일)', () => {
           expect(b.r).toBeLessThanOrEqual(width)
           expect(b.h).toBeGreaterThanOrEqual(44)
         }
+        await page.getByRole('button', { name: `${label} 완료`, exact: true }).click()
+        await expect(g).toHaveCount(0)
       }
       // 승차·하차 시각이 서로 다른 행에 있다 (옆에 나란히 있지 않음)
-      const rows = await page.evaluate(() => ['승차 시각', '하차 시각'].map((n) => document.querySelector(`[role="group"][aria-label="${n}"]`)!.getBoundingClientRect().top))
-      expect(rows[1]).toBeGreaterThan(rows[0] + 100)
+      const boardRow = await timeToggle(page, '승차 시각').boundingBox()
+      const alightRow = await timeToggle(page, '하차 시각').boundingBox()
+      expect(boardRow!.height).toBeLessThanOrEqual(80)
+      expect(alightRow!.y).toBeGreaterThanOrEqual(boardRow!.y + boardRow!.height)
+      await expect(page.getByRole('listbox')).toHaveCount(0)
       await expectLayoutOk(page, `기록 수정 ${width}px`)
       await page.screenshot({ path: `test-results/shots/editor-${width}.png`, fullPage: true })
     })
@@ -365,6 +375,8 @@ test.describe('승·하차 시각 입력 (모바일)', () => {
     for (const pct of [150, 200]) {
       await gotoApp(page, `trip/${t.id}`)
       await page.addStyleTag({ content: `html { font-size: ${pct}% !important; }` })
+      const toggle = timeToggle(page, '승차 시각')
+      if (await toggle.getAttribute('aria-expanded') === 'false') await toggle.click()
       const g = page.getByRole('group', { name: '승차 시각', exact: true })
       await expect(g.locator('output')).toHaveText('오전 09:24')
       const r = await g.evaluate((el) => {
@@ -375,7 +387,7 @@ test.describe('승·하차 시각 입력 (모바일)', () => {
           w,
           boxRight: el.getBoundingClientRect().right,
           outClipped: out.scrollWidth > out.clientWidth + 1,
-          selClipped: Array.from(el.querySelectorAll('select')).some((s) => s.scrollWidth > s.clientWidth + 1),
+          selClipped: Array.from(el.querySelectorAll('[role="listbox"]')).some((s) => s.scrollWidth > s.clientWidth + 1),
           overflow: Array.from(el.querySelectorAll('*')).filter((n) => n.getBoundingClientRect().right > w + 1).length,
           wide: Array.from(document.querySelectorAll('main *'))
             .filter((n) => n.getBoundingClientRect().right > w + 1 && getComputedStyle(n).position !== 'fixed')
@@ -420,6 +432,7 @@ test.describe('승·하차 시각 입력 (모바일)', () => {
     const t = fakeTrip({ line: '1호선', boardTime: null, alightTime: null })
     await restoreBackup(page, { trips: [t] })
     await gotoApp(page, `trip/${t.id}`)
+    await timeToggle(page, '승차 시각').click()
     const g = page.getByRole('group', { name: '승차 시각', exact: true })
     await expect(g.locator('output')).toHaveText('시·분을 모두 선택하세요')
     await g.getByRole('listbox', { name: '승차 시각 시', exact: true }).getByRole('option', { name: '9', exact: true }).click()
@@ -428,6 +441,7 @@ test.describe('승·하차 시각 입력 (모바일)', () => {
     await expect(g.locator('output')).toHaveText('오전 09:30')
     await g.getByRole('button', { name: '지우기' }).click()
     await expect(g.locator('output')).toHaveText('시·분을 모두 선택하세요')
+    await page.getByRole('button', { name: '승차 시각 완료', exact: true }).click()
     await page.getByRole('button', { name: '저장', exact: true }).click()
     await expect(page.getByRole('heading', { name: /\d+월 \d+일/ }).first()).toBeVisible()
     expect((await readDb<TripRow>(page, 'trips'))[0].boardTime).toBeNull()

@@ -143,21 +143,33 @@ export async function expectNoSeriousA11y(page: Page, label: string) {
 }
 
 /**
- * 시각 입력(오전/오후 버튼 + 시·분 선택)에 'HH:mm'(24시간제) 값을 넣는다.
+ * 시각 휠에 'HH:mm'(24시간제) 값을 넣는다. 접힌 입력은 열고 완료까지 누른다.
  * scope 는 page 또는 그 안의 영역(Locator), label 은 시각 입력의 이름(예: '착석한 시각').
  */
 export async function setTime(scope: Page | Locator, label: string, hhmm: string) {
   const [h, m] = hhmm.split(':').map(Number)
   const ap = h >= 12 ? '오후' : '오전'
   const h12 = h % 12 === 0 ? 12 : h % 12
+  const toggle = timeToggle(scope, label)
   const group = scope.getByRole('group', { name: label, exact: true })
+  // The record form loads from IndexedDB after navigation. Wait before deciding
+  // whether this screen uses a collapsed editor or an always-visible wheel.
+  await toggle.or(group).first().waitFor({ state: 'visible' })
+  const collapsed = await toggle.count() > 0
+  if (collapsed && await toggle.getAttribute('aria-expanded') === 'false') await toggle.click()
   for (const [part, value] of [['오전/오후', ap], ['시', String(h12)], ['분', String(m).padStart(2, '0')]]) {
     const wheel = group.getByRole('listbox', { name: `${label} ${part}`, exact: true })
     await wheel.getByRole('option', { name: value, exact: true }).click()
   }
+  if (collapsed) await scope.getByRole('button', { name: `${label} 완료`, exact: true }).click()
 }
 
 /** 시각 입력이 보여 주는 값('오전 08:30') */
 export function timeOut(scope: Page | Locator, label: string): Locator {
-  return scope.getByRole('group', { name: label, exact: true }).locator('output')
+  return timeToggle(scope, label).locator('output')
+    .or(scope.getByRole('group', { name: label, exact: true }).locator('output')).first()
+}
+
+export function timeToggle(scope: Page | Locator, label: string): Locator {
+  return scope.getByRole('button', { name: `${label} 편집`, exact: true })
 }

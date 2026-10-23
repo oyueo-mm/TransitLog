@@ -86,8 +86,6 @@ function StartPanel() {
     void getSetting<Route | null>(LAST_KEY, null).then((l) => {
       if (l) {
         setLast(l)
-        setMode(l.mode ?? 'subway')
-        setRoute((r) => ({ ...r, mode: l.mode ?? 'subway' }))
       }
     })
   }, [])

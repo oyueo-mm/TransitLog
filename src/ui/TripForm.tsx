@@ -26,6 +26,7 @@ import type { Trip } from '../domain/types'
 import { ChipGroup } from './common'
 import { MidSeat } from './MidSeat'
 import { TimeInput } from './TimeInput'
+import { CollapsedTimeInput } from './CollapsedTimeInput'
 import { RoutePicker } from './RoutePicker'
 
 type Draft = TripDraft
@@ -123,7 +124,7 @@ function NumField(props: {
 }
 
 function TimeField(props: { label: string; value: string | null; onChange: (v: string | null) => void }) {
-  return <TimeInput label={props.label} value={props.value} onChange={props.onChange} />
+  return <CollapsedTimeInput {...props} />
 }
 
 export interface TripFormProps {

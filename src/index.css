@@ -1471,3 +1471,8 @@ a.btn-text {
   background: transparent; border: 0; color: inherit; cursor: pointer; flex-wrap: wrap;
 }
 .daytime-summary strong { color: #244b88; }
+.collapsed-time { border-bottom: 1px solid var(--border); }
+.collapsed-time .daytime-summary output {
+  color: #244b88; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.collapsed-time .grid2 { margin-top: 10px; margin-bottom: 10px; }
