@@ -100,8 +100,8 @@ test.describe('하루 이동 타임라인', () => {
     const un = page.getByTestId('tl-untimed')
     await expect(un).toContainText('시각 미기록 (1건)')
     await expect(page.locator('svg.tl-svg g.tl-item')).toHaveCount(2)
-    await expect(page.locator(`g.tl-item[data-trip-id="${onlyBoard.id}"] text`).first()).toContainText('하차 미기록')
-    await expect(page.locator(`g.tl-item[data-trip-id="${onlyAlight.id}"] text`).first()).toContainText('승차 미기록')
+    await expect(page.locator(`g.tl-item[data-trip-id="${onlyBoard.id}"]`)).toHaveAttribute('aria-label', /하차 미기록/)
+    await expect(page.locator(`g.tl-item[data-trip-id="${onlyAlight.id}"]`)).toHaveAttribute('aria-label', /승차 미기록/)
     // 요약은 소요 시간을 추정하지 않는다
     await expect(page.getByTestId('day-summary')).toContainText('0/3건 계산')
   })
@@ -114,6 +114,15 @@ test.describe('하루 이동 타임라인', () => {
     const g = page.locator(`g.tl-item[data-trip-id="${t.id}"]`)
     await expect(g).toHaveAttribute('data-start', String(23 * 60 + 40))
     await expect(g).toHaveAttribute('data-end', String(24 * 60 + 20))
+    await page.getByRole('button', { name: '24시간 전체' }).click()
+    const clipped = await page.locator('.tl-svg').evaluate(svg => {
+      const width = Number(svg.getAttribute('width'))
+      return [...svg.querySelectorAll<SVGTextElement>(':scope > text.tl-axis')].filter(el => {
+        const r = el.getBBox()
+        return r.x < 0 || r.x + r.width > width
+      }).map(el => el.textContent)
+    })
+    expect(clipped).toEqual([])
   })
 
   test('승·하차 시각이 같으면 24시간짜리가 아니라 점으로 그려진다', async ({ page }) => {

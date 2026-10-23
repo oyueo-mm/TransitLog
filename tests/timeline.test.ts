@@ -1,15 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { standingMinutesOf } from './timelineHelpers'
 import { buildTimeline, describeItem, seatSegments, summarizeDay } from '../src/domain/timeline'
-import { LANE_H, fitScale, labelOf, layoutTimeline, MIN_TOUCH, ticksFor, xOf } from '../src/domain/timelineLayout'
+import { LANE_H, anchoredScroll, clampTimelineScale, fitScale, labelOf, layoutTimeline, MIN_TOUCH, placeTickLabels, textWidth, ticksFor, xOf } from '../src/domain/timelineLayout'
 import { lineColor } from '../src/domain/lineColors'
 
-it('10분·30분·1시간 눈금에서도 분 단위 좌표를 유지한다', () => {
-  for (const interval of [10, 30, 60] as const) {
-    const scale = 88 / interval
-    const ticks = ticksFor(1500, scale, interval)
-    expect(ticks[1].minute - ticks[0].minute).toBe(interval)
-    expect(xOf(ticks[1].minute, scale) - xOf(ticks[0].minute, scale)).toBe(88)
+it('3시간부터 1분 눈금까지 자동 조절하며 분 단위 좌표를 유지한다', () => {
+  for (const [step, scale] of [[180, 0.5], [60, 2], [30, 4], [10, 10], [5, 20], [1, 100]]) {
+    const ticks = ticksFor(1500, scale)
+    expect(ticks[1].minute - ticks[0].minute).toBe(step)
+    expect(xOf(ticks[1].minute, scale) - xOf(ticks[0].minute, scale)).toBeGreaterThanOrEqual(88)
     expect(xOf(478, scale)).toBe(478 * scale)
     expect(ticks.at(-1)?.label).toContain('익일')
   }
@@ -19,6 +18,69 @@ import { mkEvent, mkTrip } from './helpers'
 const trip = (p: Parameters<typeof mkTrip>[0]) => mkTrip({ date: '2026-03-02', ...p })
 
 describe('타임라인 좌표', () => {
+  it('자정 연장 축에서도 끝 눈금 라벨을 자르거나 이웃과 겹치지 않는다', () => {
+    for (const width of [240, 280, 600]) for (const end of [1440, 1500, 2820]) {
+      const scale = fitScale(width, 0, end)
+      const labels = placeTickLabels(ticksFor(end, scale), scale, width)
+      labels.forEach((t, i) => {
+        expect(t.labelX).toBeGreaterThanOrEqual(0)
+        expect(t.labelX + textWidth(t.label)).toBeLessThanOrEqual(width)
+        if (i) expect(t.labelX).toBeGreaterThanOrEqual(labels[i - 1].labelX + textWidth(labels[i - 1].label) + 8)
+      })
+    }
+  })
+
+  it('진행 중 화살표와 붙어 있는 다른 기록도 서로 가리지 않는다', () => {
+    const ongoing = trip({ ongoing: true, boardTime: '08:00' })
+    const next = trip({ boardTime: '08:21', alightTime: '08:30' })
+    const [group] = layoutTimeline(buildTimeline([ongoing, next], [], { nowMinute: 500 }), 2, undefined, 'continuous')
+    expect(group.lanes).toBe(2)
+    expect(group.items[0].w).toBe(40)
+  })
+
+  it('연속 보기는 다른 노선도 빈 이동 구간을 만들지 않고 같은 레인에 배치한다', () => {
+    const trips = [
+      trip({ line: '1호선', boardTime: '08:00', alightTime: '08:20' }),
+      trip({ line: '2호선', boardTime: '08:25', alightTime: '08:40' }),
+      trip({ line: '3호선', boardTime: '09:00', alightTime: '09:20' }),
+    ]
+    for (const scale of [0.2, 1, 100]) {
+      const model = buildTimeline(trips, [])
+      const [group] = layoutTimeline(model, scale, undefined, 'continuous')
+      expect(group.lanes).toBe(1)
+      expect(group.items).toHaveLength(3)
+      expect(group.items.map(i => [i.item.start, i.item.end])).toEqual([[480, 500], [505, 520], [540, 560]])
+      expect(group.items.reduce((sum, i) => sum + i.w, 0)).toBeCloseTo(55 * scale)
+      expect(layoutTimeline(model, scale)).toHaveLength(3)
+      // Even unusually wide fonts must not turn labels into additional lanes.
+      expect(layoutTimeline(model, scale, text => text.length * 100, 'continuous')[0].lanes).toBe(1)
+    }
+  })
+
+  it('연속 보기의 동시 기록만 별도 레인으로 나누며 자정 연장·관찰도 보존한다', () => {
+    const trips = [
+      trip({ line: '1호선', boardTime: '23:40', alightTime: '00:20' }),
+      trip({ line: '2호선', boardTime: '23:50', alightTime: '00:10' }),
+      trip({ line: '1호선', kind: 'observed', boardTime: '23:55' }),
+    ]
+    const [group] = layoutTimeline(buildTimeline(trips, []), 10, undefined, 'continuous')
+    expect(group.lanes).toBe(3)
+    expect(group.items).toHaveLength(3)
+    expect(group.items[0].item.end).toBe(1460)
+    expect(group.items[2].item.kind).toBe('skipped')
+    expect(group.items[0].lane).not.toBe(group.items[1].lane)
+  })
+
+  it('확대 중심의 시각을 보존하고 전체 보기부터 1분 눈금까지 확대할 수 있다', () => {
+    const minute = (1000 + 80) / 2
+    const nextScroll = anchoredScroll(minute, 80, 8)
+    expect((nextScroll + 80) / 8).toBe(minute)
+    expect(clampTimelineScale(-2, 240, 1440)).toBe(240 / 1440)
+    expect(clampTimelineScale(500, 240, 1440)).toBe(120)
+    expect(anchoredScroll(0, 50, 120)).toBe(0)
+    expect(ticksFor(1440, clampTimelineScale(120, 240, 1440))[1].minute).toBe(1)
+  })
+
   it('막대의 시작·끝은 00:00 기준 분이고 x·폭은 시각에 비례한다', () => {
     const t = trip({ line: '1호선', boardTime: '08:24', alightTime: '09:20' })
     const m = buildTimeline([t], [])
@@ -50,7 +112,10 @@ describe('타임라인 좌표', () => {
     const g = layoutTimeline(buildTimeline(trips, []), 1)[0]
     for (let l = 0; l < g.lanes; l++) {
       const row = g.items.filter((i) => i.lane === l).sort((a, b) => a.x - b.x)
-      for (let i = 1; i < row.length; i++) expect(row[i].x).toBeGreaterThanOrEqual(row[i - 1].x + Math.max(row[i - 1].w, row[i - 1].labelW))
+      for (let i = 1; i < row.length; i++) {
+        expect(row[i].x).toBeGreaterThanOrEqual(row[i - 1].x + row[i - 1].w)
+        if (row[i].label && row[i - 1].label) expect(row[i].labelX).toBeGreaterThanOrEqual(row[i - 1].labelX + row[i - 1].labelW)
+      }
     }
   })
 
@@ -77,7 +142,7 @@ describe('타임라인 좌표', () => {
           expect(l.hitX).toBeLessThanOrEqual(l.x + 0.001)
           expect(l.hitX + l.hitW).toBeGreaterThanOrEqual(Math.min(l.x + l.labelW, l.hitX + l.hitW))
           // 항목 전체(막대+레이블)의 중심이 눌림 영역 안에 있다 → 중심을 눌러도 이 항목이 눌린다
-          const cx = (Math.min(l.x, l.hitX) + Math.max(l.x + l.w, l.x + l.labelW)) / 2
+          const cx = (Math.min(l.x, l.label ? l.labelX : l.x) + Math.max(l.x + l.w, l.labelX + l.labelW)) / 2
           expect(cx).toBeGreaterThanOrEqual(l.hitX)
           expect(cx).toBeLessThanOrEqual(l.hitX + l.hitW)
         }

@@ -1,11 +1,12 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { colorKey, lineColor } from '../domain/lineColors'
 import { buildTimeline, describeItem, summarizeDay, type SeatSegState, type TimelineItem } from '../domain/timeline'
-import { AXIS_H, LANE_H, chartHeight, fitScale, labelOf, layoutTimeline, textWidth, ticksFor, xOf, type LayoutItem } from '../domain/timelineLayout'
+import { AXIS_H, LANE_H, chartHeight, labelOf, layoutTimeline, placeTickLabels, textWidth, ticksFor, xOf, type LayoutItem, type TimelineGrouping } from '../domain/timelineLayout'
 import { formatDuration } from '../domain/time'
 import type { SeatEvent, Trip } from '../domain/types'
 import { useNow } from './hooks'
+import { useTimelineViewport } from './useTimelineViewport'
 
 /**
  * 하루 이동 타임라인 (SVG).
@@ -13,10 +14,8 @@ import { useNow } from './hooks'
  *  - 막대: 승차~하차에 정확히 비례. 노선은 색과 이름으로, 좌석 상태는 채움(앉아서)·줄무늬(서서)·점선 빈 막대(미확인)로 구분
  *  - 확대·축소·이동: 버튼과 터치 스크롤. 짧은 구간도 누를 수 있도록 터치 영역을 44px 이상으로 확보
  */
-const BAR_Y = 22
+const BAR_Y = 10
 const BAR_H = 24
-const ZOOM_STEP = 1.6
-const MAX_FACTOR = 14
 const LABEL_COL = 76
 
 /** 레이블 폭을 실제 글꼴로 측정한다(기기·글꼴마다 한글 폭이 달라 추정값만으로는 겹치거나 눌림 영역이 어긋남). 측정할 수 없으면 추정값 */
@@ -34,8 +33,6 @@ function measureLabel(s: string): number {
   const w = ctx.measureText(s).width
   return w > 0 ? Math.ceil(w) + 6 : textWidth(s)
 }
-
-type ViewMode = 'focus' | 'full'
 
 function Swatch({ kind, color = '#5B6577' }: { kind: SeatSegState | 'point' | 'ongoing' | 'skipped' | 'extension'; color?: string }) {
   const id = `sw-${kind}-${colorKey(color)}`
@@ -101,9 +98,6 @@ function Bar({ li, selected, onSelect, color, pxPerMin }: { li: LayoutItem; sele
     >
       <title>{`${label} — ${d.rows.map(([k, v]) => `${k}: ${v}`).join(' / ')}`}</title>
       <rect className="tl-hit" x={li.hitX} y={y0} width={li.hitW} height={LANE_H} fill="transparent" />
-      <text x={li.x} y={y0 + 14} className="tl-label" fill={it.isRide ? color : '#566073'}>
-        {label}
-      </text>
       {isPoint ? (
         it.isRide ? (
           <path d={`M${cx} ${cy - 11} L${cx + 11} ${cy} L${cx} ${cy + 11} L${cx - 11} ${cy} Z`} fill={color} stroke="#fff" strokeWidth="1.5" />
@@ -121,7 +115,7 @@ function Bar({ li, selected, onSelect, color, pxPerMin }: { li: LayoutItem; sele
               data-provisional={g.provisional ? '1' : undefined}
               x={xOf(g.start, pxPerMin)}
               y={y0 + BAR_Y}
-              width={Math.max(1, xOf(g.end, pxPerMin) - xOf(g.start, pxPerMin))}
+              width={xOf(g.end, pxPerMin) - xOf(g.start, pxPerMin)}
               height={BAR_H}
               fill={segFill(g.state)}
               opacity={g.provisional ? 0.7 : 1}
@@ -151,6 +145,10 @@ function Bar({ li, selected, onSelect, color, pxPerMin }: { li: LayoutItem; sele
           {it.kind === 'ongoing' && <path d={`M${li.x + li.w} ${y0 + BAR_Y} l8 ${BAR_H / 2} l-8 ${BAR_H / 2} Z`} fill={color} />}
         </>
       )}
+      {li.label && <g pointerEvents="none">
+        {li.labelInside && <rect x={li.labelX - 2} y={y0 + BAR_Y + 2} width={li.labelW + 4} height={BAR_H - 4} rx="3" fill="#fff" fillOpacity="0.94" />}
+        <text x={li.labelX} y={y0 + LANE_H / 2} dy="0.35em" className="tl-label" fill="#263449">{li.label}</text>
+      </g>}
       {selected && <rect x={li.hitX} y={y0 + 2} width={Math.max(li.hitW, 4)} height={LANE_H - 4} fill="none" stroke="#1f4fd1" strokeWidth="2" strokeDasharray="5 3" rx="6" pointerEvents="none" />}
     </g>
   )
@@ -169,12 +167,12 @@ export function DayTimeline({ date, trips, events, today }: { date: string; trip
 
   const wrapRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
-  const zoomCenter = useRef<number | null>(null)
   const [width, setWidth] = useState(0)
-  const [view, setView] = useState<ViewMode>('focus')
-  const [factor, setFactor] = useState(1)
-  const [interval, setInterval] = useState<10 | 30 | 60 | null>(null)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [grouping, setGrouping] = useState<TimelineGrouping>('continuous')
+  const [selection, setSelection] = useState<{ date: string; id: string | null } | null>(null)
+  const selectedId = selection?.date === date ? selection.id : null
+  const setSelectedId = (id: string | null) => setSelection({ date, id })
+  const hasItems = model.items.length > 0
 
   // 화면 폭(회전·창 크기 변경 포함)을 관찰해 배율을 다시 계산한다
   useLayoutEffect(() => {
@@ -185,37 +183,16 @@ export function DayTimeline({ date, trips, events, today }: { date: string; trip
     const ro = new ResizeObserver(measure)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [])
+  }, [hasItems])
 
-  const hasItems = model.items.length > 0
   const focus = model.focus ?? { start: 0, end: model.axisEnd }
-  const baseScale = useMemo(() => {
-    const w = Math.max(120, width)
-    return view === 'full' ? fitScale(w, 0, model.axisEnd) : fitScale(w, focus.start, focus.end)
-  }, [width, view, model.axisEnd, focus.start, focus.end])
-  const pxPerMin = interval ? 88 / interval : baseScale * factor
-  const groups = useMemo(() => layoutTimeline(model, pxPerMin, measureLabel), [model, pxPerMin])
+  const { pxPerMin, view, zoom, pan, fit, canZoomIn, canZoomOut } = useTimelineViewport(scrollRef, width, model.axisEnd, focus.start, focus.end, date, hasItems)
+  const groups = useMemo(() => layoutTimeline(model, pxPerMin, measureLabel, grouping), [model, pxPerMin, grouping])
   const height = chartHeight(groups)
-  const fittedFull = interval === null && view === 'full' && factor === 1
+  const fittedFull = view === 'full'
   const totalW = Math.max(width, Math.ceil(model.axisEnd * pxPerMin) + (fittedFull ? 0 : 88))
-  const ticks = useMemo(() => ticksFor(model.axisEnd, pxPerMin, interval ?? undefined), [model.axisEnd, pxPerMin, interval])
-
-  // 보기 모드·배율이 바뀌면 보이는 영역의 시작을 맞춘다
-  const scrollKey = `${view}|${factor}|${interval}|${date}|${hasItems}`
-  useEffect(() => {
-    const sc = scrollRef.current
-    if (!sc) return
-    if (zoomCenter.current !== null) {
-      sc.scrollLeft = Math.max(0, zoomCenter.current * pxPerMin - sc.clientWidth / 2)
-      zoomCenter.current = null
-      return
-    }
-    sc.scrollLeft = interval === null && view === 'full' && factor === 1 ? 0 : Math.max(0, xOf(view === 'focus' ? focus.start : 0, pxPerMin) - 8)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scrollKey, width > 0])
-
-  // 날짜가 바뀌면 선택을 해제한다
-  useEffect(() => setSelectedId(null), [date])
+  const ticks = useMemo(() => ticksFor(model.axisEnd, pxPerMin), [model.axisEnd, pxPerMin])
+  const tickLabels = useMemo(() => placeTickLabels(ticks, pxPerMin, totalW, measureLabel), [ticks, pxPerMin, totalW])
 
   const selected = model.items.find((i) => i.id === selectedId) ?? model.untimed.find((i) => i.id === selectedId) ?? null
   const colorOf = (it: TimelineItem) => lineColor(it.trip.line, it.trip.mode)
@@ -226,27 +203,6 @@ export function DayTimeline({ date, trips, events, today }: { date: string; trip
     return [...m.entries()]
   }, [model.items])
 
-  const selectInterval = (next: 10 | 30 | 60) => {
-    const sc = scrollRef.current
-    zoomCenter.current = sc && interval !== null ? (sc.scrollLeft + sc.clientWidth / 2) / pxPerMin : model.items[0]?.start ?? 0
-    setInterval(next)
-  }
-  const zoom = (dir: 1 | -1) => {
-    if (interval) {
-      selectInterval(dir > 0 ? interval === 60 ? 30 : 10 : interval === 10 ? 30 : 60)
-      return
-    }
-    const sc = scrollRef.current
-    const center = sc ? (sc.scrollLeft + sc.clientWidth / 2) / pxPerMin : 0
-    const next = dir > 0 ? Math.min(MAX_FACTOR, factor * ZOOM_STEP) : Math.max(1, factor / ZOOM_STEP)
-    setFactor(next)
-    // 보고 있던 시각을 중심으로 유지
-    requestAnimationFrame(() => {
-      if (sc) sc.scrollLeft = Math.max(0, center * baseScale * next - sc.clientWidth / 2)
-    })
-  }
-  const pan = (dir: 1 | -1) => scrollRef.current?.scrollBy({ left: dir * (scrollRef.current.clientWidth * 0.6), behavior: 'smooth' })
-
   const detail = selected ? describeItem(selected) : null
 
   return (
@@ -256,35 +212,37 @@ export function DayTimeline({ date, trips, events, today }: { date: string; trip
       ) : (
         <>
           <div className="tl-controls" role="group" aria-label="타임라인 보기 조절">
-            {([60, 30, 10] as const).map((step) => <button key={step} type="button" className={`btn-small ${interval === step ? 'is-on' : ''}`} aria-pressed={interval === step} onClick={() => selectInterval(step)}>{step === 60 ? '1시간' : `${step}분`} 단위</button>)}
-            <button type="button" className={`btn-small ${interval === null && view === 'full' && factor === 1 ? 'is-on' : ''}`} aria-pressed={interval === null && view === 'full' && factor === 1} onClick={() => (setView('full'), setFactor(1), setInterval(null))}>
+            <button type="button" className="btn-small" aria-pressed={grouping === 'continuous'} onClick={() => setGrouping('continuous')}>연속 보기</button>
+            <button type="button" className="btn-small" aria-pressed={grouping === 'lines'} onClick={() => setGrouping('lines')}>노선별 보기</button>
+            <button type="button" className={`btn-small ${view === 'full' ? 'is-on' : ''}`} aria-pressed={view === 'full'} onClick={() => fit('full')}>
               24시간 전체
             </button>
-            <button type="button" className={`btn-small ${interval === null && view === 'focus' && factor === 1 ? 'is-on' : ''}`} aria-pressed={interval === null && view === 'focus' && factor === 1} disabled={!hasItems} onClick={() => (setView('focus'), setFactor(1), setInterval(null))}>
+            <button type="button" className={`btn-small ${view === 'focus' ? 'is-on' : ''}`} aria-pressed={view === 'focus'} disabled={!hasItems} onClick={() => fit('focus')}>
               이동 시간대
             </button>
-            <button type="button" className="btn-small" aria-label="축소" onClick={() => zoom(-1)} disabled={interval ? interval === 60 : factor <= 1}>
+            <button type="button" className="btn-small" aria-label="축소" onClick={() => zoom(1 / 1.25)} disabled={!canZoomOut}>
               −
             </button>
-            <button type="button" className="btn-small" aria-label="확대" onClick={() => zoom(1)} disabled={interval ? interval === 10 : factor >= MAX_FACTOR}>
+            <button type="button" className="btn-small" aria-label="확대" onClick={() => zoom(1.25)} disabled={!canZoomIn}>
               ＋
             </button>
-            <button type="button" className="btn-small" aria-label="왼쪽으로 이동" onClick={() => pan(-1)}>
+            <button type="button" className="btn-small" aria-label="왼쪽으로 이동" onClick={() => pan(-width * 0.6)}>
               ◀
             </button>
-            <button type="button" className="btn-small" aria-label="오른쪽으로 이동" onClick={() => pan(1)}>
+            <button type="button" className="btn-small" aria-label="오른쪽으로 이동" onClick={() => pan(width * 0.6)}>
               ▶
             </button>
           </div>
+          <p className="hint tl-gesture-hint">드래그로 이동 · 두 손가락 또는 Ctrl/⌘+휠로 확대 · 막대를 누르면 상세</p>
 
           {hasItems && (
             <div className="tl-frame">
-              <div className="tl-rows" style={{ width: LABEL_COL }} aria-hidden="true">
+              <div className="tl-rows" style={{ width: grouping === 'continuous' ? 42 : LABEL_COL }} aria-hidden="true">
                 {groups.map((g) => (
                   <div key={g.name} className="tl-rowlabel" style={{ height: g.lanes * LANE_H }}>
-                    <span className="tl-chip" style={{ borderColor: g.name === '비탑승' ? '#6b7385' : colorOf(g.items[0].item) }}>
-                      <i style={{ background: g.name === '비탑승' ? '#fff' : colorOf(g.items[0].item), border: g.name === '비탑승' ? '2px solid #6b7385' : undefined }} />
-                      {g.name}
+                    <span className={grouping === 'continuous' ? 'tl-cont-label' : 'tl-chip'} style={{ borderColor: g.name === '비탑승' ? '#6b7385' : colorOf(g.items[0].item) }}>
+                      {grouping !== 'continuous' && <i style={{ background: g.name === '비탑승' ? '#fff' : colorOf(g.items[0].item), border: g.name === '비탑승' ? '2px solid #6b7385' : undefined }} />}
+                      {grouping === 'continuous' ? '이동' : g.name}
                     </span>
                   </div>
                 ))}
@@ -302,6 +260,8 @@ export function DayTimeline({ date, trips, events, today }: { date: string; trip
                     data-px-per-min={pxPerMin}
                     data-axis-end={model.axisEnd}
                     data-view={view}
+                    data-grouping={grouping}
+                    data-tick-step={ticks.length > 1 ? ticks[1].minute - ticks[0].minute : model.axisEnd}
                   >
                     <defs>
                       {usedColors.map((c) => (
@@ -324,12 +284,10 @@ export function DayTimeline({ date, trips, events, today }: { date: string; trip
                       <line key={t.minute} x1={xOf(t.minute, pxPerMin)} x2={xOf(t.minute, pxPerMin)} y1="0" y2={height - AXIS_H} stroke={t.major ? '#dfe3e8' : '#eef0f3'} strokeWidth="1" />
                     ))}
                     {model.axisEnd > 1440 && (
-                      <>
+                      <g>
+                        <title>다음 날 연장 구간 (시간축의 익일 표시)</title>
                         <line x1={xOf(1440, pxPerMin)} x2={xOf(1440, pxPerMin)} y1="0" y2={height - AXIS_H} stroke="#566073" strokeWidth="1.5" strokeDasharray="5 3" />
-                        <text x={xOf(1440, pxPerMin) + 4} y={height - AXIS_H - 4} className="tl-axis" fill="#566073">
-                          다음 날 →
-                        </text>
-                      </>
+                      </g>
                     )}
                     {(() => {
                       let y = 0
@@ -351,8 +309,8 @@ export function DayTimeline({ date, trips, events, today }: { date: string; trip
                         <line x1={xOf(nowMinute, pxPerMin)} x2={xOf(nowMinute, pxPerMin)} y1="0" y2={height - AXIS_H} stroke="#d0124f" strokeWidth="1.2" strokeDasharray="2 3" />
                       </g>
                     )}
-                    {ticks.map((t) => (
-                      <text key={`l${t.minute}`} x={xOf(t.minute, pxPerMin) + (t.minute === model.axisEnd ? -3 : 3)} y={height - 9} className="tl-axis" fill="#566073" textAnchor={t.minute === model.axisEnd ? 'end' : 'start'}>
+                    {tickLabels.map((t) => (
+                      <text key={`l${t.minute}`} x={t.labelX} y={height - 9} className="tl-axis" fill="#566073">
                         {t.label}
                       </text>
                     ))}
@@ -363,6 +321,8 @@ export function DayTimeline({ date, trips, events, today }: { date: string; trip
           )}
 
           {/* 범례: 색만으로 구분하지 않도록 패턴과 글자를 함께 쓴다 */}
+          <details className="tl-legend-fold">
+          <summary>범례·노선 색상</summary>
           <ul className="tl-legend" aria-label="범례">
             <li>
               <Swatch kind="seated" /> 앉아서 이동 <span className="muted">(진한 채움)</span>
@@ -397,6 +357,7 @@ export function DayTimeline({ date, trips, events, today }: { date: string; trip
               ))}
             </ul>
           )}
+          </details>
 
           {detail && selected && (
             <div className="card tl-detail" role="region" aria-label="선택한 탑승 상세" data-testid="tl-detail">

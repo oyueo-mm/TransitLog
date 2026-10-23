@@ -30,7 +30,7 @@ test('하루 기록은 접혀 시작하고 휠 편집·완료·새로고침 후 
   await expectLayoutOk(page, '접힌 하루 기록')
 })
 
-test('이전 관찰 기록은 탑승 중에서 제외하고 목록과 10분 타임라인에 남긴다', async ({ page }) => {
+test('이전 관찰 기록은 탑승 중에서 제외하고 확대 가능한 타임라인에 남긴다', async ({ page }) => {
   const observed = fakeTrip({ kind: 'observed', ongoing: true, line: '관찰노선', boardTime: '07:58' })
   await restoreBackup(page, { trips: [observed] })
   await gotoApp(page, 'quick')
@@ -39,12 +39,11 @@ test('이전 관찰 기록은 탑승 중에서 제외하고 목록과 10분 타�
   await expect(page.locator('.card .live')).toHaveCount(0)
   await expect(page.locator('.timeline')).toContainText('관찰노선')
   const chart = page.getByTestId('day-timeline')
-  for (const [label, step] of [['1시간', 60], ['30분', 30], ['10분', 10]] as const) {
-    await chart.getByRole('button', { name: `${label} 단위`, exact: true }).click()
-    const scale = Number(await chart.locator('svg.tl-svg').getAttribute('data-px-per-min'))
-    expect(scale).toBeCloseTo(88 / step)
-    await expect(chart.locator('[data-kind="skipped"]')).toHaveCount(1)
-  }
+  const svg = chart.locator('svg.tl-svg')
+  await expect(chart.getByRole('button', { name: /단위$/ })).toHaveCount(0)
+  for (let i = 0; i < 16 && Number(await svg.getAttribute('data-tick-step')) > 10; i++) await chart.getByRole('button', { name: '확대', exact: true }).click()
+  expect(Number(await svg.getAttribute('data-tick-step'))).toBeLessThanOrEqual(10)
+  await expect(chart.locator('[data-kind="skipped"]')).toHaveCount(1)
   const scroller = chart.locator('.tl-scroller')
   expect(await scroller.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true)
   const viewport = await scroller.boundingBox()

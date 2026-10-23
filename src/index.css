@@ -1232,18 +1232,15 @@ a.btn-text {
 }
 .tl-controls {
   display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
   margin-bottom: 10px;
 }
-.tl-controls .btn-small:nth-child(-n + 3) {
-  grid-column: span 4;
-}
-.tl-controls .btn-small:nth-child(4), .tl-controls .btn-small:nth-child(5) {
-  grid-column: span 6;
+.tl-controls .btn-small:nth-child(-n + 4) {
+  grid-column: span 2;
 }
 .tl-controls .btn-small {
-  grid-column: span 3;
+  grid-column: span 1;
   white-space: normal;
   overflow-wrap: anywhere;
   padding-inline: 4px;
@@ -1251,7 +1248,7 @@ a.btn-text {
   min-width: 44px;
   justify-content: center;
 }
-.tl-controls .btn-small.is-on {
+.tl-controls .btn-small[aria-pressed="true"] {
   background: var(--accent-soft);
   border-color: var(--accent);
   font-weight: 600;
@@ -1306,8 +1303,17 @@ a.btn-text {
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
-  touch-action: pan-x pan-y;
+  touch-action: pan-y;
+  overscroll-behavior-x: contain;
+  cursor: grab;
 }
+.tl-scroller.is-dragging, .tl-scroller.is-dragging * { cursor: grabbing; }
+.tl-cont-label { font-size: 0.72rem; font-weight: 600; color: var(--muted); }
+.tl-gesture-hint { margin-block: 4px 8px; }
+.tl-legend-fold { margin-top: 6px; }
+.tl-legend-fold summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; font-size: 0.85rem; color: var(--muted); }
+.tl-legend-fold summary::before { content: '▸'; margin-right: 6px; }
+.tl-legend-fold[open] summary::before { content: '▾'; }
 .tl-svg {
   display: block;
   user-select: none;
