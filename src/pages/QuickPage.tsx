@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { ChevronDown, ChevronUp } from 'lucide-react'
 import { getSetting, saveTrip, setSetting, startRide, touchTemplate } from '../db/repo'
 import { suggestBoardFromPrevAlight, suggestPositions, suggestRoutes, type RouteSuggestion, type SuggestedFields } from '../domain/recommend'
 import { canonicalName, formatTrainRoute } from '../domain/stations'
@@ -299,7 +300,8 @@ function StartPanel() {
 
       {/* 7. 칸·문, 좌우, 대기 순서 (필요할 때 펼치기) */}
       <button type="button" className="btn-text more" aria-expanded={more} onClick={() => setMore((m) => !m)}>
-        {more ? '위치·대기 순서 접기 ▲' : `위치·대기 순서 ${posSummary ? `(${posSummary}) ` : ''}펼치기 ▼`}
+        {more ? '위치·대기 순서 접기' : `위치·대기 순서 ${posSummary ? `(${posSummary}) ` : ''}펼치기`}
+        {more ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
       </button>
       {more && (
         <Section>

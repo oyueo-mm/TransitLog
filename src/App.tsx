@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { CalendarDays, ChartNoAxesColumn, House, Settings, Zap, type LucideIcon } from 'lucide-react'
 import { HashRouter, NavLink, Route, Routes } from 'react-router-dom'
 import { CalendarPage, DayPage } from './pages/CalendarPage'
 import { ImportPage } from './pages/ImportPage'
@@ -10,12 +11,12 @@ import { TripEditorPage } from './pages/TripEditorPage'
 import { ToastView } from './ui/common'
 import { useToastHost } from './ui/hooks'
 
-const NAV = [
-  { to: '/', label: '오늘', icon: '🗓' },
-  { to: '/quick', label: '빠른 기록', icon: '⚡' },
-  { to: '/calendar', label: '캘린더', icon: '📅' },
-  { to: '/stats', label: '통계', icon: '📊' },
-  { to: '/settings', label: '설정·백업', icon: '⚙' },
+const NAV: Array<{ to: string; label: string; Icon: LucideIcon }> = [
+  { to: '/', label: '오늘', Icon: House },
+  { to: '/quick', label: '빠른 기록', Icon: Zap },
+  { to: '/calendar', label: '캘린더', Icon: CalendarDays },
+  { to: '/stats', label: '통계', Icon: ChartNoAxesColumn },
+  { to: '/settings', label: '설정·백업', Icon: Settings },
 ]
 
 function Shell() {
@@ -49,7 +50,7 @@ function Shell() {
         {NAV.map((n) => (
           <NavLink key={n.to} to={n.to} end={n.to === '/'} className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}>
             <span className="nav-icon" aria-hidden="true">
-              {n.icon}
+              <n.Icon size={22} strokeWidth={2} />
             </span>
             <span className="nav-label">{n.label}</span>
           </NavLink>

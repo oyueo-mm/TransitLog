@@ -1,3 +1,4 @@
+import { TriangleAlert } from 'lucide-react'
 import { sampleNote } from '../domain/coverage'
 
 export function Bars({ items, max }: { items: Array<{ key: string; count: number }>; max?: number }) {
@@ -34,12 +35,12 @@ export function SeatMetric(props: { title: string; num: number; den: number; tot
       </dd>
       {note.insufficient && (
         <dd className="caution strong">
-          ⚠ 표본 부족 ({den}건) — 해석 주의
+          <TriangleAlert size={14} className="inline-icon" /> 표본 부족 ({den}건) — 해석 주의
         </dd>
       )}
       {!note.insufficient && note.partial && (
         <dd className="caution">
-          ⚠ 전체의 {note.coveragePct}%만 판정 — 전체 착석률로 읽지 마세요{props.bias ? ` (${props.bias})` : ''}
+          <TriangleAlert size={14} className="inline-icon" /> 전체의 {note.coveragePct}%만 판정 — 전체 착석률로 읽지 마세요{props.bias ? ` (${props.bias})` : ''}
         </dd>
       )}
       <dd className={`value ${note.insufficient ? 'dim' : ''}`}>

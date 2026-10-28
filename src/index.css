@@ -153,8 +153,58 @@ textarea {
   padding: 4px 2px;
 }
 .nav-icon {
-  font-size: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
   line-height: 1;
+}
+
+/* SVG 아이콘(lucide): 글자와 같은 선 색을 쓰고 줄어들지 않게 한다 */
+.lucide {
+  flex: none;
+}
+.inline-icon {
+  vertical-align: -0.15em;
+}
+.sync-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+}
+.sync-status.error {
+  color: var(--danger);
+}
+.conflict-item {
+  display: grid;
+  gap: 6px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+.spin {
+  animation: tl-spin 1s linear infinite;
+}
+@keyframes tl-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
+  }
+}
+.btn-small,
+.btn-text.more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.btn-text.more {
+  display: flex;
+  justify-content: flex-start;
 }
 .nav-item.is-active {
   color: var(--accent);
@@ -318,6 +368,14 @@ a.card:active {
   background: var(--danger-soft);
   color: var(--danger);
   border-color: transparent;
+}
+.notice.warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+  border-color: transparent;
+}
+.sync-status.warn {
+  color: var(--warn);
 }
 
 /* 폼 */

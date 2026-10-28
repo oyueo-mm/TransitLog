@@ -1,4 +1,5 @@
 import { useId, useState } from 'react'
+import { X } from 'lucide-react'
 import { Chip } from './common'
 
 /**
@@ -22,7 +23,7 @@ export function TagPicker({ label, values, onChange, suggestions, placeholder }:
         <div className="chips" aria-label={`선택한 ${label}`}>
           {values.map((v) => (
             <Chip key={v} value={v} selected onSelect={() => onChange(values.filter((x) => x !== v))} small>
-              {v} ✕<span className="sr-only"> 선택 해제</span>
+              {v} <X size={12} className="inline-icon" /><span className="sr-only"> 선택 해제</span>
             </Chip>
           ))}
         </div>

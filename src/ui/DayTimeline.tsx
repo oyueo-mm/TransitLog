@@ -1,5 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
+import { ChevronLeft, ChevronRight, Minus, Plus } from 'lucide-react'
 import { colorKey, lineColor } from '../domain/lineColors'
 import { buildTimeline, describeItem, summarizeDay, type SeatSegState, type TimelineItem } from '../domain/timeline'
 import { AXIS_H, LANE_H, chartHeight, labelOf, layoutTimeline, placeTickLabels, textWidth, ticksFor, xOf, type LayoutItem, type TimelineGrouping } from '../domain/timelineLayout'
@@ -221,16 +222,16 @@ export function DayTimeline({ date, trips, events, today }: { date: string; trip
               이동 시간대
             </button>
             <button type="button" className="btn-small" aria-label="축소" onClick={() => zoom(1 / 1.25)} disabled={!canZoomOut}>
-              −
+              <Minus size={16} />
             </button>
             <button type="button" className="btn-small" aria-label="확대" onClick={() => zoom(1.25)} disabled={!canZoomIn}>
-              ＋
+              <Plus size={16} />
             </button>
             <button type="button" className="btn-small" aria-label="왼쪽으로 이동" onClick={() => pan(-width * 0.6)}>
-              ◀
+              <ChevronLeft size={16} />
             </button>
             <button type="button" className="btn-small" aria-label="오른쪽으로 이동" onClick={() => pan(width * 0.6)}>
-              ▶
+              <ChevronRight size={16} />
             </button>
           </div>
           <p className="hint tl-gesture-hint">드래그로 이동 · 두 손가락 또는 Ctrl/⌘+휠로 확대 · 막대를 누르면 상세</p>

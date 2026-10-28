@@ -161,3 +161,25 @@ test.describe('시각 입력 — 지금 버튼', () => {
     expect(rows[0].boardTime).toBe('09:10')
   })
 })
+
+test.describe('아이콘', () => {
+  for (const width of [320, 360, 390]) {
+    test(`${width}px: 하단 메뉴는 SVG 아이콘이고 글자와 겹치지 않으며 터치 영역이 충분하다`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 740 })
+      await gotoApp(page, '')
+      const items = page.getByRole('navigation', { name: '주요 메뉴' }).getByRole('link')
+      await expect(items).toHaveCount(5)
+      for (let i = 0; i < 5; i++) {
+        const it = items.nth(i)
+        await expect(it.locator('svg')).toHaveCount(1)
+        expect(await it.locator('.nav-icon').innerText()).toBe('') // 이모지 문자 없음
+        const box = (await it.boundingBox())!
+        expect(box.height).toBeGreaterThanOrEqual(44)
+        const icon = (await it.locator('svg').boundingBox())!
+        const label = (await it.locator('.nav-label').boundingBox())!
+        expect(icon.y + icon.height).toBeLessThanOrEqual(label.y + 1)
+      }
+      await expectLayoutOk(page, `메뉴 ${width}px`)
+    })
+  }
+})

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ChevronDown, ChevronUp, TriangleAlert } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { sampleNote, seatCoverage, MIN_SAMPLE } from '../domain/coverage'
 import {
@@ -223,7 +224,8 @@ export function SearchPanel({ trips, events }: { trips: Trip[]; events: SeatEven
 
       <div className="row-between">
         <button type="button" className="btn-small" aria-expanded={open} aria-controls="adv-filters" onClick={() => setOpen(!open)}>
-          상세 조건 {open ? '접기 ▴' : '펼치기 ▾'}
+          상세 조건 {open ? '접기' : '펼치기'}
+          {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
         </button>
         <button type="button" className="btn-small" onClick={reset} disabled={count === 0 && sort === 'newest'}>
           조건 초기화{count > 0 ? ` (${count})` : ''}
@@ -339,7 +341,7 @@ export function SearchPanel({ trips, events }: { trips: Trip[]; events: SeatEven
             <>
               {stat.rows.length < MIN_SAMPLE && (
                 <div className="notice" role="note">
-                  ⚠ 일치한 탑승이 {stat.rows.length}건뿐이라 비율을 일반화하기에는 표본이 부족합니다.
+                  <TriangleAlert size={14} className="inline-icon" /> 일치한 탑승이 {stat.rows.length}건뿐이라 비율을 일반화하기에는 표본이 부족합니다.
                 </div>
               )}
               <dl className="metrics">
@@ -361,7 +363,7 @@ export function SearchPanel({ trips, events }: { trips: Trip[]; events: SeatEven
                     {stat.dur.avg === null ? '—' : formatDuration(Math.round(stat.dur.avg))} <span className="muted">(표본 {stat.dur.n})</span>
                   </dd>
                   <dd className="def">승·하차 시각이 있는 탑승만</dd>
-                  {stat.dur.n > 0 && sampleNote(stat.dur.n, stat.rows.length).insufficient && <dd className="caution">⚠ 표본 부족</dd>}
+                  {stat.dur.n > 0 && sampleNote(stat.dur.n, stat.rows.length).insufficient && <dd className="caution"><TriangleAlert size={14} className="inline-icon" /> 표본 부족</dd>}
                 </div>
                 <div>
                   <dt>서서 탄 뒤 착석까지 평균</dt>
@@ -369,7 +371,7 @@ export function SearchPanel({ trips, events }: { trips: Trip[]; events: SeatEven
                     {stat.toSeat.avg === null ? '—' : formatDuration(Math.round(stat.toSeat.avg))} <span className="muted">(표본 {stat.toSeat.n})</span>
                   </dd>
                   <dd className="def">서서 탑승 → 첫 착석, 두 시각이 모두 있는 탑승만</dd>
-                  {stat.toSeat.n > 0 && stat.toSeat.n < MIN_SAMPLE && <dd className="caution">⚠ 표본 부족</dd>}
+                  {stat.toSeat.n > 0 && stat.toSeat.n < MIN_SAMPLE && <dd className="caution"><TriangleAlert size={14} className="inline-icon" /> 표본 부족</dd>}
                 </div>
                 <div>
                   <dt>혼잡도 분포</dt>
