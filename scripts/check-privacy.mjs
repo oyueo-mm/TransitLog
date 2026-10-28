@@ -19,6 +19,8 @@ const FORBIDDEN_PATH = [
   /\.sdocx?$/i,
   /transitlog-backup[^/]*\.json$/i,
   /transitlog-before-restore[^/]*\.json$/i,
+  /transitlog-before-sync[^/]*\.json$/i,
+  /(^|\/)\.env(\.(?!example$)[^/]*)?$/i,
   /transitlog-import[^/]*\.json$/i,
   /transitlog-trips[^/]*\.csv$/i,
   /denylist/i,
@@ -51,6 +53,15 @@ function walk(dir) {
 }
 const distFiles = args.has('--dist') && existsSync('dist') ? walk('dist') : []
 for (const f of distFiles) if (isForbidden(f.replace(/\\/g, '/'))) failures.push(`배포 산출물에 개인 데이터 파일: ${f}`)
+
+// 2-1) 비밀 값 검사: OAuth 클라이언트 비밀·액세스 토큰이 코드나 산출물에 들어가면 실패 (Client ID 는 공개 가능한 값이라 허용)
+const SECRET_PATTERNS = [/GOCSPX-[A-Za-z0-9_-]{10,}/, /ya29\.[A-Za-z0-9_-]{20,}/, /"client_secret"\s*:/, /-----BEGIN (RSA |EC )?PRIVATE KEY-----/]
+const SECRET_SKIP = /\.(png|ico|woff2?|jpg|webp)$|^package-lock\.json$|^scripts\/check-privacy\.mjs$|^tests\//i
+for (const f of [...worktreeFiles(), ...distFiles.map((d) => d.replace(/\\/g, '/'))]) {
+  if (SECRET_SKIP.test(f) || !existsSync(f)) continue
+  const text = readFileSync(f, 'utf8')
+  for (const re of SECRET_PATTERNS) if (re.test(text)) failures.push(`비밀 값으로 보이는 문자열(${re.source.slice(0, 14)}…)이 ${f} 에 있음`)
+}
 
 // 3) 로컬 denylist (실제 장소·메모)
 const denyPath = 'private/denylist.txt'

@@ -17,5 +17,5 @@
     "erasableSyntaxOnly": true
   },
   "include": ["src", "scripts", "tests", "e2e"],
-  "exclude": ["src/**/*.tsx", "src/main.tsx", "src/import/pdfClient.ts", "src/pages", "src/ui", "src/App.tsx"]
+  "exclude": ["src/**/*.tsx", "src/main.tsx", "src/import/pdfClient.ts", "src/pages", "src/ui", "src/App.tsx", "src/sync/instance.ts"]
 }

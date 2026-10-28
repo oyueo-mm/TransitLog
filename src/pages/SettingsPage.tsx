@@ -15,6 +15,7 @@ import {
 } from '../db/backup'
 import { deleteTemplate, setSetting } from '../db/repo'
 import { Section } from '../ui/common'
+import { SyncSection } from '../ui/SyncSection'
 import { toast, useAllTrips, useSetting, useTemplates } from '../ui/hooks'
 import { SCHEMA_VERSION } from '../domain/types'
 
@@ -172,6 +173,8 @@ export function SettingsPage() {
         )}
         {msg && <p className="notice">{msg}</p>}
       </Section>
+
+      <SyncSection />
 
       <Section title="기존 노트 가져오기">
         <p>Samsung Notes 에서 내보낸 PDF(또는 텍스트)를 분석해 기록으로 가져옵니다. 변환 결과를 원문과 비교·수정한 뒤 승인한 것만 저장합니다.</p>

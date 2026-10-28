@@ -44,6 +44,23 @@ describe('스키마 호환(앱 업데이트)', () => {
     now.close()
   })
 
+  it('v1 → v2 업그레이드는 동기화 테이블만 추가하고 기존 데이터를 그대로 둔다', async () => {
+    const name = `compat-v2-${Math.random()}`
+    const old = new V1Snapshot(name)
+    const t = mkTrip({ line: '1호선', boardTime: '08:00', note: '업그레이드 보존' })
+    await old.table('trips').add(t)
+    await old.table('templates').add({ id: 'tp1', name: '내 경로', mode: 'subway', useCount: 2, lastUsedAt: null, createdAt: 1 })
+    old.close()
+
+    const now = new TransitDB(name)
+    await now.open()
+    expect(now.verno).toBe(2)
+    expect(await now.trips.get(t.id)).toEqual(t)
+    expect((await now.templates.get('tp1'))?.useCount).toBe(2)
+    for (const tbl of [now.syncMeta, now.syncBase, now.syncConflicts, now.syncSnapshots]) expect(await tbl.count()).toBe(0)
+    now.close()
+  })
+
   it('앱 시작 경로(db 모듈 로드)가 데이터를 지우지 않는다', async () => {
     const name = `compat2-${Math.random()}`
     const a = new TransitDB(name)

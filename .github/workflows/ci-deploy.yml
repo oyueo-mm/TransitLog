@@ -22,6 +22,10 @@ jobs:
     name: 개인정보 검사 · 타입 · 단위 · 빌드 · 브라우저 테스트
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      # Google Drive 동기화용 OAuth 클라이언트 ID (공개 가능한 값). 저장소 Settings > Variables 에 등록하면 빌드에 들어간다.
+      # 비어 있으면 동기화 기능이 꺼진 채로 빌드·배포된다. 클라이언트 비밀은 사용하지 않는다.
+      VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
     steps:
       - uses: actions/checkout@v4
         with:

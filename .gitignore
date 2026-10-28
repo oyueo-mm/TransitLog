@@ -29,6 +29,10 @@ private/
 *.pdf
 *.sdocx
 transitlog-backup-*.json
+transitlog-before-*.json
+.env
+.env.*
+!.env.example
 transitlog-*.csv
 test-results/
 playwright-report/
