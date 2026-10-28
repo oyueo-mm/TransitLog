@@ -36,6 +36,8 @@ export interface RoutePickerProps {
   /** 노선을 바꿀 때 이전 노선의 역·운행 구간을 비운다 (빠른 기록용. 기록 수정에서는 값을 지우지 않는다) */
   clearOnLineChange?: boolean
   showAlight?: boolean
+  /** 승차 장소 입력의 접두어 (기본 '승차'. 관찰 기록에서는 '관찰') */
+  boardLabel?: string
   /** 직전 하차역 추천 (승차역 칩 맨 앞, 점선) */
   prevAlight?: string | null
   na?: { trainOrigin: NaControl; trainDestination: NaControl }
@@ -245,7 +247,7 @@ export function RoutePicker(props: RoutePickerProps) {
 
       {/* 3. 승차역 */}
       <PlaceField
-        label={`승차${placeLabel}`}
+        label={`${props.boardLabel ?? '승차'}${placeLabel}`}
         recommended
         value={v.boardPlace}
         items={board}

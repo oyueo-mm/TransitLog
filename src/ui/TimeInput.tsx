@@ -90,9 +90,10 @@ export function TimeInput({ label, value, onChange, nowLabel, clearable = true, 
     onChange(next.h && next.m ? join(next.ap, next.h, next.m) : null)
   }
   const setNow = () => {
-    const p = split(nowHm())!
-    setPart(p)
-    onChange(nowHm())
+    // 누를 때마다 현재 시각을 새로 읽고, 한 번만 읽어 표시값과 저장값이 어긋나지 않게 한다
+    const now = nowHm()
+    setPart(split(now)!)
+    onChange(now)
   }
 
   return (

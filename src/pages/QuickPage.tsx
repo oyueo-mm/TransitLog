@@ -68,6 +68,8 @@ function StartPanel() {
   const allEvents = useAllEvents()
   const templates = useTemplates()
   const now = useNow(30_000)
+  const [kind, setKind] = useState<'ride' | 'observed'>('ride')
+  const observing = kind === 'observed'
   const [mode, setMode] = useState<Mode>('subway')
   const [route, setRoute] = useState<Route>({ mode: 'subway' })
   const [initialSeat, setInitialSeat] = useState<SeatState | null>(null)
@@ -168,6 +170,27 @@ function StartPanel() {
     setLast(r)
   }
 
+  /**
+   * 관찰 기록 저장: 탑승하지 않았으므로 하차·좌석 정보는 만들지 않는다.
+   * 연속 관찰을 위해 교통수단·노선·관찰 장소는 유지하고 열차 구간·위치·혼잡도·비고·시각은 비운다.
+   */
+  const saveObservation = async () => {
+    setBusy(true)
+    try {
+      const d = buildDraft()
+      await saveTrip(
+        { ...d, kind: 'observed', ongoing: false, alightPlace: null, alightTime: null, initialSeat: null, seatLogComplete: null },
+        [],
+      )
+      reset()
+      setRoute((r) => ({ mode: r.mode, line: r.line ?? null, boardPlace: r.boardPlace ?? null }))
+      setCopied(null)
+      toast('관찰 기록을 저장했습니다')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const start = async () => {
     setBusy(true)
     try {
@@ -199,8 +222,19 @@ function StartPanel() {
     <div className="page quick">
       <header className="page-head">
         <h1>빠른 기록</h1>
-        <div className="muted">경로를 누르고 ‘지금 탑승’ · 점선 칩은 추천이며 눌러야 입력됩니다</div>
+        <div className="muted">
+          {observing ? '타지 않고 본 것만 남깁니다 · 좌석 상태는 기록하지 않아요' : '경로를 누르고 ‘지금 탑승’ · 점선 칩은 추천이며 눌러야 입력됩니다'}
+        </div>
       </header>
+
+      {/* 0. 기록 종류: 탑승(기본) / 관찰 */}
+      <div className="seg" role="group" aria-label="기록 종류">
+        {([['ride', '탑승'], ['observed', '관찰']] as const).map(([k, label]) => (
+          <button key={k} type="button" className={`seg-btn ${kind === k ? 'is-on' : ''}`} aria-pressed={kind === k} onClick={() => setKind(k)}>
+            {label}
+          </button>
+        ))}
+      </div>
 
       {/* 1. 지하철 / 버스 */}
       <div className="seg" role="group" aria-label="교통수단">
@@ -236,17 +270,19 @@ function StartPanel() {
           history={all}
           historyEvents={evs}
           clearOnLineChange
-          prevAlight={prevAlight}
+          prevAlight={observing ? null : prevAlight}
+          showAlight={!observing}
+          boardLabel={observing ? '관찰' : undefined}
           onChange={(p) => patch(p)}
         />
       </Section>
 
       {/* 6. 탑승 시각 */}
-      <div className="field" role="group" aria-label="탑승 시각 설정">
-        <div className="field-label">탑승 시각</div>
+      <div className="field" role="group" aria-label={observing ? '관찰 시각 설정' : '탑승 시각 설정'}>
+        <div className="field-label">{observing ? '관찰 시각' : '탑승 시각'}</div>
         {editTime ? (
           <>
-            <TimeInput label="탑승 시각" value={timeOverride ?? hm} onChange={(t) => setTimeOverride(t)} clearable={false} hideLabel />
+            <TimeInput label={observing ? '관찰 시각' : '탑승 시각'} value={timeOverride ?? hm} onChange={(t) => setTimeOverride(t)} clearable={false} hideLabel />
             <button type="button" className="btn-text" onClick={() => (setEditTime(false), setTimeOverride(null))}>
               지금으로
             </button>
@@ -335,7 +371,8 @@ function StartPanel() {
         </Section>
       )}
 
-      {/* 8~9. 좌석 상태와 중간 착석 */}
+      {/* 8~9. 좌석 상태와 중간 착석 (탑승 기록에만) */}
+      {!observing && (
       <Section title="좌석">
         <ChipGroup<SeatState>
           label="지금 좌석 상태"
@@ -349,6 +386,7 @@ function StartPanel() {
         />
         {initialSeat === 'standing' && <MidSeat events={events} onChange={setEvents} places={seatPlaces} known={known} />}
       </Section>
+      )}
 
       {/* 10. 혼잡도와 비고 */}
       <Section title="혼잡도·비고 (선택)">
@@ -368,12 +406,20 @@ function StartPanel() {
 
       {/* 11. 기록 저장 */}
       <div className="startbar">
-        <button type="button" className="btn-primary big" onClick={start} disabled={busy}>
-          지금 탑승
-        </button>
-        <button type="button" className="btn-text" onClick={saveOnly} disabled={busy}>
-          하차 기록 없이 저장
-        </button>
+        {observing ? (
+          <button type="button" className="btn-primary big" onClick={saveObservation} disabled={busy}>
+            관찰 기록 저장
+          </button>
+        ) : (
+          <>
+            <button type="button" className="btn-primary big" onClick={start} disabled={busy}>
+              지금 탑승
+            </button>
+            <button type="button" className="btn-text" onClick={saveOnly} disabled={busy}>
+              하차 기록 없이 저장
+            </button>
+          </>
+        )}
       </div>
     </div>
   )
