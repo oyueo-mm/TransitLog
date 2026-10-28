@@ -1534,6 +1534,9 @@ a.btn-text {
   width: 100%; min-height: 52px; padding: 10px 4px; text-align: left;
   background: transparent; border: 0; color: inherit; cursor: pointer; flex-wrap: wrap;
 }
+.collapsed-time-row { display: flex; align-items: center; gap: 8px; }
+.collapsed-time-row .daytime-summary { flex: 1; min-width: 0; }
+.now-btn { flex: none; min-width: 56px; }
 .daytime-summary strong { color: #244b88; }
 .collapsed-time { border-bottom: 1px solid var(--border); }
 .collapsed-time .daytime-summary output {

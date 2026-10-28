@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { expectLayoutOk, expectNoSeriousA11y, fakeTrip, gotoApp, readDb, restoreBackup, selectLine, setTime, timeOut } from './fixtures'
+import { expectLayoutOk, expectNoSeriousA11y, fakeTrip, gotoApp, readDb, restoreBackup, selectLine, setTime, timeOut, timeToggle } from './fixtures'
 
 interface TripRow {
   id: string
@@ -122,33 +122,41 @@ test.describe('빠른 기록 — 관찰', () => {
 })
 
 test.describe('시각 입력 — 지금 버튼', () => {
-  test('기록 추가 화면에서 값이 없을 때 ‘지금’을 누르면 현재 시각(24시간 저장)이 들어간다', async ({ page }) => {
+  test('기록 추가 화면에서 펼치지 않고 ‘지금’을 누르면 현재 시각(24시간 저장)이 들어가고, 이후 수정할 수 있다', async ({ page }) => {
     await freeze(page, '2026-03-02T14:37:00+09:00')
     await gotoApp(page, 'trip/new')
     await page.getByRole('group', { name: '기록 종류' }).getByRole('button', { name: '관찰만' }).click()
-    const group = page.getByRole('group', { name: '관찰 시각', exact: true })
-    await expect(timeOut(page, '관찰 시각')).toHaveText('시·분을 모두 선택하세요')
-    await group.getByRole('button', { name: '지금' }).click()
+    await expect(timeOut(page, '관찰 시각')).toHaveText('시간 입력 +')
+    await expect(timeToggle(page, '관찰 시각')).toHaveAttribute('aria-expanded', 'false')
+    await page.getByRole('button', { name: '관찰 시각 지금', exact: true }).click()
     await expect(timeOut(page, '관찰 시각')).toHaveText('오후 02:37')
+    await expect(timeToggle(page, '관찰 시각')).toHaveAttribute('aria-expanded', 'false') // 펼쳐지지 않음
 
     // 눌러도 수동 수정이 가능하다
     await setTime(page, '관찰 시각', '07:05')
     await expect(timeOut(page, '관찰 시각')).toHaveText('오전 07:05')
-    await group.getByRole('button', { name: '지금' }).click()
+    // 펼친 편집기 안의 ‘지금’은 초안에만 적용되고 완료해야 반영된다
+    await timeToggle(page, '관찰 시각').click()
+    await page.getByRole('group', { name: '관찰 시각', exact: true }).getByRole('button', { name: '지금', exact: true }).click()
+    await expect(timeOut(page, '관찰 시각')).toHaveText('오전 07:05')
+    await page.getByRole('button', { name: '관찰 시각 완료', exact: true }).click()
+    await expect(timeOut(page, '관찰 시각')).toHaveText('오후 02:37')
     await page.getByRole('button', { name: '저장', exact: true }).click()
     const rows = await readDb<TripRow>(page, 'trips')
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({ kind: 'observed', boardTime: '14:37' })
   })
 
-  test('자정 경계: 00:05 는 오전 12:05, 12:00 은 오후 12:00', async ({ page }) => {
+  test('자정 경계: 00:05 는 오전 12:05, 12:00 은 오후 12:00, 버튼을 누를 때마다 시각을 다시 읽는다', async ({ page }) => {
     await freeze(page, '2026-03-03T00:05:00+09:00')
     await gotoApp(page, 'trip/new')
-    await page.getByRole('group', { name: '승차 시각', exact: true }).getByRole('button', { name: '지금' }).click()
+    await page.getByRole('button', { name: '승차 시각 지금', exact: true }).click()
     await expect(timeOut(page, '승차 시각')).toHaveText('오전 12:05')
     await freeze(page, '2026-03-03T12:00:00+09:00')
-    await page.getByRole('group', { name: '승차 시각', exact: true }).getByRole('button', { name: '지금' }).click()
+    await page.getByRole('button', { name: '승차 시각 지금', exact: true }).click()
     await expect(timeOut(page, '승차 시각')).toHaveText('오후 12:00')
+    await page.getByRole('button', { name: '저장', exact: true }).click()
+    expect((await readDb<TripRow>(page, 'trips'))[0].boardTime).toBe('12:00')
   })
 
   test('기존 기록을 열기만 해서는 시각이 바뀌지 않는다', async ({ page }) => {
@@ -159,6 +167,16 @@ test.describe('시각 입력 — 지금 버튼', () => {
     await page.getByRole('button', { name: '저장', exact: true }).click()
     const rows = await readDb<TripRow>(page, 'trips')
     expect(rows[0].boardTime).toBe('09:10')
+  })
+
+  test('320px 에서 ‘지금’ 버튼이 요약과 겹치거나 잘리지 않는다', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 740 })
+    await gotoApp(page, 'trip/new')
+    await expectLayoutOk(page, '지금 버튼 320px')
+    const sum = (await timeToggle(page, '승차 시각').boundingBox())!
+    const now = (await page.getByRole('button', { name: '승차 시각 지금', exact: true }).boundingBox())!
+    expect(sum.x + sum.width).toBeLessThanOrEqual(now.x + 1)
+    expect(now.width).toBeGreaterThanOrEqual(44)
   })
 })
 
