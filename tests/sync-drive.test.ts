@@ -180,3 +180,167 @@ describe('Google 로그인(토큰 모델)', () => {
     expect(await p).toEqual({ ok: false, reason: 'needs_interaction' })
   })
 })
+
+class MemStorage implements Storage {
+  m = new Map<string, string>()
+  get length() {
+    return this.m.size
+  }
+  clear() {
+    this.m.clear()
+  }
+  getItem(k: string) {
+    return this.m.get(k) ?? null
+  }
+  key(i: number) {
+    return [...this.m.keys()][i] ?? null
+  }
+  removeItem(k: string) {
+    this.m.delete(k)
+  }
+  setItem(k: string, v: string) {
+    this.m.set(k, v)
+  }
+}
+
+describe('토큰 보관 (새로고침 유지, 탭 한정)', () => {
+  afterEach(() => {
+    delete (globalThis as unknown as { google?: unknown }).google
+    delete (globalThis as unknown as { localStorage?: unknown }).localStorage
+  })
+  const grant = (token = 'abc', expires = 3600) => installGis((cfg) => cfg.callback({ access_token: token, expires_in: expires }))
+
+  it('받은 토큰은 실제 만료 시각과 함께 탭 저장소에 두고, 새로고침 후 새 인스턴스가 유효하면 그대로 쓴다', async () => {
+    let t = 1_000_000
+    const store = new MemStorage()
+    grant('tok-1', 3600)
+    const a = createGoogleAuth('cid', store, () => t)
+    await a.acquire({ interactive: true })
+    const saved = JSON.parse(store.getItem('transitlog.gtoken')!)
+    expect(saved).toEqual({ t: 'tok-1', exp: t + 3600 * 1000, cid: 'cid' })
+    // 새로고침: 메모리는 사라지고 같은 탭의 저장소만 남는다
+    t += 10 * 60 * 1000
+    const b = createGoogleAuth('cid', store, () => t)
+    expect(b.getToken()).toBe('tok-1')
+  })
+
+  it('만료되었거나 만료 직전(여유 60초)인 토큰은 쓰지 않고 저장소에서도 지운다', async () => {
+    let t = 0
+    const store = new MemStorage()
+    store.setItem('transitlog.gtoken', JSON.stringify({ t: 'old', exp: 3_600_000, cid: 'cid' }))
+    t = 3_600_000 - 59_000
+    expect(createGoogleAuth('cid', store, () => t).getToken()).toBeNull()
+    expect(store.getItem('transitlog.gtoken')).toBeNull()
+    store.setItem('transitlog.gtoken', JSON.stringify({ t: 'old', exp: 3_600_000, cid: 'cid' }))
+    t = 3_600_001
+    expect(createGoogleAuth('cid', store, () => t).getToken()).toBeNull()
+  })
+
+  it('실행 중에 만료 시각이 지나면 메모리 토큰도 더 이상 쓰지 않는다', async () => {
+    let t = 0
+    const store = new MemStorage()
+    grant('tok', 3600)
+    const a = createGoogleAuth('cid', store, () => t)
+    await a.acquire({ interactive: true })
+    expect(a.getToken()).toBe('tok')
+    t = 3600 * 1000 - 30_000
+    expect(a.getToken()).toBeNull()
+    expect(store.length).toBe(0)
+  })
+
+  it('다른 Client ID 의 토큰, 손상된 값, 형식이 다른 값은 무시하고 지운다', () => {
+    const store = new MemStorage()
+    for (const bad of [JSON.stringify({ t: 'x', exp: 9e15, cid: 'other' }), '{깨짐', JSON.stringify({ t: '', exp: 9e15, cid: 'cid' }), JSON.stringify({ t: 'x', exp: 'soon', cid: 'cid' }), 'null']) {
+      store.setItem('transitlog.gtoken', bad)
+      expect(createGoogleAuth('cid', store, () => 0).getToken()).toBeNull()
+      expect(store.getItem('transitlog.gtoken')).toBeNull()
+    }
+  })
+
+  it('forget(연결 해제·401·계정 변경)은 저장된 토큰도 지우고 Google 권한은 철회하지 않는다', async () => {
+    const store = new MemStorage()
+    const { revoke } = grant('tok')
+    const a = createGoogleAuth('cid', store, () => 0)
+    await a.acquire({ interactive: true })
+    expect(store.length).toBe(1)
+    a.forget()
+    expect(store.length).toBe(0)
+    expect(a.getToken()).toBeNull()
+    expect(revoke).not.toHaveBeenCalled()
+  })
+
+  it('revoke 는 저장소를 비우고 Google 에 철회를 요청한다. 토큰이 없으면 false', async () => {
+    const store = new MemStorage()
+    const { revoke } = grant('tok')
+    const a = createGoogleAuth('cid', store, () => 0)
+    await a.acquire({ interactive: true })
+    expect(await a.revoke()).toBe(true)
+    expect(revoke).toHaveBeenCalledWith('tok', expect.any(Function))
+    expect(store.length).toBe(0)
+    expect(await a.revoke()).toBe(false)
+  })
+
+  it('localStorage 는 절대 사용하지 않고, 저장되는 것은 토큰·만료·Client ID 뿐이다 (갱신 토큰·비밀 없음)', async () => {
+    const touched: string[] = []
+    ;(globalThis as unknown as { localStorage: unknown }).localStorage = new Proxy({}, { get: (_t, p) => (touched.push(String(p)), undefined) })
+    const store = new MemStorage()
+    installGis((cfg) => cfg.callback({ access_token: 'tok', expires_in: 3600, refresh_token: 'NOPE', client_secret: 'NOPE' } as never))
+    const a = createGoogleAuth('cid', store, () => 0)
+    await a.acquire({ interactive: true })
+    a.getToken()
+    a.forget()
+    expect(touched).toEqual([])
+    store.setItem('x', 'y')
+    await a.acquire({ interactive: true })
+    expect(Object.keys(JSON.parse(store.getItem('transitlog.gtoken')!)).sort()).toEqual(['cid', 'exp', 't'])
+    expect(store.getItem('transitlog.gtoken')).not.toMatch(/NOPE/)
+  })
+
+  it('저장소를 쓸 수 없는 환경(null)에서도 메모리만으로 동작한다', async () => {
+    grant('tok')
+    const a = createGoogleAuth('cid', null, () => 0)
+    await a.acquire({ interactive: true })
+    expect(a.getToken()).toBe('tok')
+  })
+
+  it('저장소가 예외를 던져도 동작한다', async () => {
+    grant('tok')
+    const bad = new MemStorage()
+    bad.setItem = () => {
+      throw new Error('quota')
+    }
+    bad.getItem = () => {
+      throw new Error('denied')
+    }
+    const a = createGoogleAuth('cid', bad, () => 0)
+    await a.acquire({ interactive: true })
+    expect(a.getToken()).toBe('tok')
+  })
+
+  it('로그인 요청이 진행 중이면 두 번째 요청은 새 팝업을 만들지 않는다', async () => {
+    const calls: number[] = []
+    installGis((cfg) => {
+      calls.push(1)
+      setTimeout(() => cfg.callback({ access_token: 'tok', expires_in: 3600 }), 20)
+    })
+    const a = createGoogleAuth('cid', new MemStorage(), () => 0)
+    const [r1, r2] = await Promise.all([a.acquire({ interactive: true }), a.acquire({ interactive: true })])
+    expect(calls).toHaveLength(1)
+    expect([r1, r2]).toContainEqual({ ok: false, reason: 'busy' })
+    expect([r1, r2]).toContainEqual({ ok: true })
+  })
+
+  it('계정 선택 요청은 select_account 이고 로그인 힌트를 보내지 않는다', async () => {
+    const { requests } = grant('tok')
+    const a = createGoogleAuth('cid', new MemStorage(), () => 0)
+    await a.acquire({ interactive: true, loginHint: 'a@example.test', selectAccount: true })
+    expect(requests[0]).toEqual({ prompt: 'select_account' })
+  })
+
+  it('GIS 가 이미 불러와져 있으면 같은 동작 안에서 바로 팝업을 요청한다 (await 이전)', () => {
+    const { requests } = grant('tok')
+    const a = createGoogleAuth('cid', new MemStorage(), () => 0)
+    void a.acquire({ interactive: true })
+    expect(requests).toHaveLength(1) // 동기 호출 직후 이미 요청됨
+  })
+})

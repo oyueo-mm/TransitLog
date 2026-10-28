@@ -12,8 +12,6 @@ import type { SyncConflict, SyncStatus } from './types'
 const DEBOUNCE_MS = 2500
 const RETRY_BASE_MS = 30_000
 const RETRY_MAX_MS = 10 * 60_000
-/** 조용한 토큰 갱신이 실패한 뒤 사용자 조작 없이 다시 시도하지 않는 시간 */
-const SILENT_COOLDOWN_MS = 10 * 60_000
 
 export interface ControllerDeps {
   db: TransitDB
@@ -45,7 +43,10 @@ export class SyncController {
   private timer: ReturnType<typeof setTimeout> | null = null
   private retryTimer: ReturnType<typeof setTimeout> | null = null
   private retryCount = 0
-  private silentFailedAt = 0
+  /** 마지막으로 연결한 계정(이메일). '다시 연결' 때 계정 선택을 건너뛰는 힌트 — 사용자 클릭 안에서 비동기 읽기를 하지 않도록 미리 메모리에 둔다 */
+  private hint: string | null = null
+  /** 진행 중인 로그인 요청 (팝업 중복 생성 방지) */
+  private signingIn: Promise<void> | null = null
   /** 확인 대기 중인 실행에서 이미 받은 승인들 */
   private granted: RunOptions = {}
   private initDone = false
@@ -87,18 +88,67 @@ export class SyncController {
       getMeta<number | null>(db, 'lastOkAt', null),
       getMeta<string | null>(db, 'accountEmail', null),
     ])
+    this.hint = account
     this.set({ auto, lastOkAt, account, phase: enabled ? 'idle' : 'disconnected', conflictCount: await db.syncConflicts.count() })
-    if (enabled) await this.syncNow({ interactive: false, reason: 'start' })
+    // 클릭이 오기 전에 로그인 구성 요소를 불러와 두면, 클릭한 바로 그 동작에서 팝업을 열 수 있다
+    auth.preload()
+    // 새로고침 전에 받은 토큰이 아직 유효하면(sessionStorage) 그대로 이어서 동기화하고, 없으면 '재인증 필요'로 둔다.
+    // 사용자 클릭 없이는 Google 로그인을 새로 받을 수 없으므로 화면 없는 자동 시도는 하지 않는다.
+    if (enabled) await this.syncNow()
   }
 
   // ── 사용자 동작 ──
-  /** Google 계정 연결 (버튼 클릭 안에서 호출해야 팝업이 막히지 않는다) */
-  async connect(): Promise<void> {
-    if (!this.deps.auth.configured) return
-    this.granted = {}
-    await this.deps.db.syncMeta.put({ key: 'enabled', value: true })
-    this.set({ phase: 'idle', message: null, confirm: null })
-    await this.syncNow({ interactive: true, reason: 'connect' })
+  /**
+   * Google 로그인 후 연결 (버튼 클릭 이벤트 안에서 호출해야 한다).
+   * 팝업이 허용되도록 클릭 직후 첫 동작으로 로그인 요청을 보낸다 — 이 함수 앞부분에서는 await 하지 않는다.
+   */
+  connect(opts: { otherAccount?: boolean } = {}): Promise<void> {
+    const { auth } = this.deps
+    if (!auth.configured) return Promise.resolve()
+    if (this.signingIn) return this.signingIn
+    const request = auth.acquire({ interactive: true, loginHint: this.hint, selectAccount: opts.otherAccount })
+    const run = async () => {
+      const wasEnabled = this.status.phase !== 'disconnected'
+      this.set({ message: null })
+      const r = await request
+      if (!r.ok) {
+        if (r.reason === 'busy') return
+        const message = this.authMessage(r.reason)
+        // 이미 연결된 상태에서의 실패는 '재인증 필요', 처음 연결 시도의 실패는 그대로 '연결 안 됨'
+        this.set(wasEnabled ? { phase: 'reauth', message, dirty: true } : { phase: 'disconnected', message })
+        return
+      }
+      this.granted = {}
+      await this.deps.db.syncMeta.put({ key: 'enabled', value: true })
+      this.set({ phase: 'idle', message: null, confirm: null })
+      await this.syncNow()
+    }
+    this.signingIn = run().finally(() => {
+      this.signingIn = null
+    })
+    return this.signingIn
+  }
+
+  /** 재인증 필요 상태의 '다시 연결' */
+  reconnect(opts: { otherAccount?: boolean } = {}): Promise<void> {
+    return this.connect(opts)
+  }
+
+  private authMessage(reason: string): string {
+    switch (reason) {
+      case 'denied':
+        return 'Google 연결이 거부되었습니다. Drive 앱 데이터 접근을 허용해야 동기화할 수 있습니다.'
+      case 'scope_missing':
+        return '동기화에 필요한 권한(Drive 앱 데이터)이 허용되지 않았습니다. 다시 연결하며 권한을 모두 허용해 주세요.'
+      case 'popup_blocked':
+        return '로그인 창이 차단되었습니다. 주소창의 팝업 차단을 허용한 뒤 다시 연결해 주세요.'
+      case 'unavailable':
+        return 'Google 로그인 구성 요소를 불러오지 못했습니다. 네트워크를 확인한 뒤 다시 시도해 주세요.'
+      case 'closed':
+        return '로그인 창이 닫혀 연결하지 못했습니다. 다시 연결을 눌러 주세요.'
+      default:
+        return 'Google 로그인이 필요합니다. ‘다시 연결’을 눌러 주세요.'
+    }
   }
 
   async setAuto(on: boolean): Promise<void> {
@@ -108,11 +158,11 @@ export class SyncController {
   }
 
   /** '지금 동기화' */
-  async syncNow(o: { interactive: boolean; reason?: string } = { interactive: true }): Promise<void> {
+  async syncNow(): Promise<void> {
     if (!this.isActive()) return
     if (this.timer) clearTimeout(this.timer)
     this.timer = null
-    return this.enqueue(() => this.execute(this.granted, o.interactive))
+    return this.enqueue(() => this.execute(this.granted))
   }
 
   /** 사용자가 확인 창에서 '계속'을 눌렀다 */
@@ -126,7 +176,7 @@ export class SyncController {
     else if (req.kind === 'remote-corrupt') g.rebuildRemote = true
     this.granted = req.kind === 'bulk-delete' ? this.granted : g
     this.set({ confirm: null, message: null })
-    await this.enqueue(() => this.execute(g, true))
+    await this.enqueue(() => this.execute(g))
   }
 
   /** 확인 창에서 취소: 처음 연결·계정 변경이면 연결을 취소한다 */
@@ -137,17 +187,32 @@ export class SyncController {
     else this.set({ confirm: null, phase: 'idle', message: '동기화를 보류했습니다. 다음 동기화 때 다시 확인합니다.' })
   }
 
-  /** 연결 해제: 이 기기의 기록은 지우지 않는다 */
+  /**
+   * 이 기기에서 연결 해제: 이 기기의 인증 상태와 동기화 설정만 지운다.
+   * 이 기기의 기록, Drive 의 기록, Google 에 부여한 권한(다른 기기의 연결)은 그대로 둔다.
+   */
   async disconnect(): Promise<void> {
     const { db, auth } = this.deps
     if (this.timer) clearTimeout(this.timer)
     if (this.retryTimer) clearTimeout(this.retryTimer)
     this.timer = this.retryTimer = null
     await this.queue.catch(() => undefined)
-    await auth.revoke().catch(() => undefined)
+    auth.forget()
     await clearSyncState(db)
     this.granted = {}
+    this.hint = null
     this.set({ ...BASE_STATUS, auto: this.status.auto, phase: auth.configured ? 'disconnected' : 'unconfigured' })
+  }
+
+  /**
+   * Google 접근 권한 철회: 이 앱에 준 권한을 Google 쪽에서 취소한다. 같은 계정으로 연결한 다른 기기의 토큰도 무효가 되어
+   * 그 기기들은 다시 연결해야 한다. 호출하기 전에 사용자에게 반드시 확인을 받아야 한다. Drive 의 기록은 지우지 않는다.
+   * 반환값: Google 에 철회 요청을 보냈는가(이 탭에 토큰이 없으면 false → Google 계정 설정에서 직접 철회해야 한다)
+   */
+  async revokeAccess(): Promise<boolean> {
+    const revoked = await this.deps.auth.revoke().catch(() => false)
+    await this.disconnect()
+    return revoked
   }
 
   // ── 자동 동기화 ──
@@ -164,15 +229,14 @@ export class SyncController {
     if (this.timer) clearTimeout(this.timer)
     this.timer = setTimeout(() => {
       this.timer = null
-      void this.syncNow({ interactive: false, reason: 'auto' })
+      void this.syncNow()
     }, this.deps.debounceMs ?? DEBOUNCE_MS)
   }
 
   /** 오래 열려 있던 화면이 다시 보일 때: 조용한 갱신을 한 번 더 시도 */
   onVisible(): void {
     if (!this.isActive() || !this.status.auto) return
-    if (this.status.phase === 'reauth' && this.now() - this.silentFailedAt < SILENT_COOLDOWN_MS) return
-    if (this.status.phase === 'confirm') return
+    if (this.status.phase === 'reauth' || this.status.phase === 'confirm') return
     this.requestSync()
   }
 
@@ -222,7 +286,7 @@ export class SyncController {
     return p as Promise<T>
   }
 
-  private async execute(opts: RunOptions, interactive: boolean): Promise<void> {
+  private async execute(opts: RunOptions): Promise<void> {
     const { db, auth, drive } = this.deps
     if (!this.isActive()) return
     if (!this.online()) {
@@ -231,24 +295,15 @@ export class SyncController {
     }
     this.set({ phase: 'syncing', message: null, dirty: false })
     try {
+      // 유효한 토큰이 없으면(만료 또는 새로고침으로 소실) 여기서 로그인을 시도하지 않는다 — 클릭 밖의 팝업은 차단된다.
+      // 이것은 오류가 아니라 정상적인 인증 제약이므로 재인증 필요로 표시하고 '다시 연결' 버튼을 보여 준다.
       if (!auth.getToken()) {
-        const hint = await getMeta<string | null>(db, 'accountEmail', null)
-        const r = await auth.acquire({ interactive, loginHint: hint })
-        if (!r.ok) {
-          this.silentFailedAt = this.now()
-          const msg =
-            r.reason === 'denied'
-              ? 'Google 연결이 거부되었습니다. Drive 앱 데이터 접근을 허용해야 동기화할 수 있습니다.'
-              : r.reason === 'scope_missing'
-                ? '동기화에 필요한 권한(Drive 앱 데이터)이 허용되지 않았습니다. 다시 연결하며 권한을 모두 허용해 주세요.'
-                : r.reason === 'popup_blocked'
-                  ? '로그인 창이 차단되었습니다. 팝업을 허용한 뒤 다시 연결해 주세요.'
-                  : r.reason === 'unavailable'
-                    ? 'Google 로그인 구성 요소를 불러오지 못했습니다. 네트워크를 확인한 뒤 다시 시도해 주세요.'
-                    : 'Google 연결이 만료되었습니다. ‘다시 연결’을 눌러 주세요. 기록은 이 기기에 안전하게 저장되어 있습니다.'
-          this.set({ phase: 'reauth', message: msg, dirty: true })
-          return
-        }
+        this.set({
+          phase: 'reauth',
+          dirty: true,
+          message: 'Google 로그인이 만료되었습니다. 연결 정보와 기록은 그대로이며, ‘다시 연결’을 한 번 누르면 이어서 동기화합니다.',
+        })
+        return
       }
       const out = await runSync({ db, drive, now: () => this.now() }, opts)
       if (out.kind === 'confirm') {
@@ -258,6 +313,7 @@ export class SyncController {
       this.granted = {}
       this.retryCount = 0
       const [lastOkAt, account, conflictCount] = await Promise.all([getMeta<number | null>(db, 'lastOkAt', null), getMeta<string | null>(db, 'accountEmail', null), db.syncConflicts.count()])
+      this.hint = account ?? this.hint
       this.set({
         phase: conflictCount > 0 ? 'conflict' : 'ok',
         lastOkAt,
@@ -282,8 +338,7 @@ export class SyncController {
       switch (e.kind) {
         case 'auth':
           this.deps.auth.forget()
-          this.silentFailedAt = this.now()
-          this.set({ phase: 'reauth', dirty: true, message: 'Google 연결이 만료되었습니다. ‘다시 연결’을 눌러 주세요. 기록은 이 기기에 안전하게 저장되어 있습니다.' })
+          this.set({ phase: 'reauth', dirty: true, message: 'Google 로그인이 만료되었습니다. 연결 정보와 기록은 그대로이며, ‘다시 연결’을 한 번 누르면 이어서 동기화합니다.' })
           return
         case 'network':
           this.set({ phase: this.online() ? 'error' : 'offline', dirty: true, message: this.online() ? '네트워크 오류로 동기화하지 못했습니다. 잠시 후 자동으로 다시 시도합니다.' : '오프라인입니다. 연결되면 자동으로 동기화합니다.' })
@@ -308,7 +363,7 @@ export class SyncController {
     const wait = Math.min(RETRY_MAX_MS, (this.deps.retryBaseMs ?? RETRY_BASE_MS) * 2 ** this.retryCount++)
     this.retryTimer = setTimeout(() => {
       this.retryTimer = null
-      void this.syncNow({ interactive: false, reason: 'retry' })
+      void this.syncNow()
     }, wait)
   }
 }

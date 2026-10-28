@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { CloudCheck, CloudOff, RefreshCw, TriangleAlert } from 'lucide-react'
 import { downloadText, backupFileName } from '../db/backup'
 import { googleAuth, syncController } from '../sync/instance'
@@ -155,9 +155,28 @@ export function SyncSection() {
   const conflicts = useSyncConflicts()
   const snaps = useSyncSnapshots()
   const [busy, setBusy] = useState(false)
+  const [note, setNote] = useState<string | null>(null)
+  // 클릭한 바로 그 동작에서 로그인 창을 열 수 있도록 Google 로그인 구성 요소를 미리 불러온다
+  useEffect(() => googleAuth.preload(), [])
   const run = (fn: () => Promise<void>) => {
     setBusy(true)
     void fn().finally(() => setBusy(false))
+  }
+  const revokeAccess = () => {
+    if (
+      !window.confirm(
+        'Google 접근 권한을 철회합니다.\n\n같은 Google 계정으로 연결한 다른 기기(PC·휴대폰)의 로그인도 모두 무효가 되어, 그 기기들에서 다시 연결해야 합니다.\nDrive 에 올라간 기록과 각 기기의 기록은 지워지지 않습니다.\n\n계속할까요?',
+      )
+    )
+      return
+    run(async () => {
+      const sent = await syncController.revokeAccess()
+      setNote(
+        sent
+          ? 'Google 접근 권한을 철회했습니다. 다시 쓰려면 다시 연결해 권한을 허용해야 합니다.'
+          : '이 탭에 로그인 정보가 없어 Google 에 철회를 요청하지 못했습니다. 완전히 철회하려면 Google 계정의 ‘타사 앱 및 서비스’에서 TransitLog 를 제거하세요. 이 기기의 연결은 해제했습니다.',
+      )
+    })
   }
 
   if (st.phase === 'unconfigured' || !googleAuth.configured) {
@@ -184,6 +203,8 @@ export function SyncSection() {
             <li>Drive의 일반 파일은 보지 못하고, 이 앱 전용 숨김 폴더(앱 데이터)만 사용합니다.</li>
             <li>연결을 해제해도 이 기기의 기록은 지워지지 않습니다.</li>
           </ul>
+          {st.message && <p className="notice error">{st.message}</p>}
+          {note && <p className="notice">{note}</p>}
           <button className="btn-primary" disabled={busy} onClick={() => run(() => syncController.connect())}>
             Google 계정 연결
           </button>
@@ -208,11 +229,16 @@ export function SyncSection() {
           {st.confirm && <ConfirmPanel req={st.confirm} busy={busy} run={run} />}
           <div className="actions-col">
             {needsReconnect ? (
-              <button className="btn-primary" disabled={busy} onClick={() => run(() => syncController.syncNow({ interactive: true }))}>
-                다시 연결
-              </button>
+              <>
+                <button className="btn-primary" disabled={busy} onClick={() => run(() => syncController.reconnect())}>
+                  다시 연결
+                </button>
+                <button className="btn-text" disabled={busy} onClick={() => run(() => syncController.reconnect({ otherAccount: true }))}>
+                  다른 계정으로 연결
+                </button>
+              </>
             ) : (
-              <button className="btn-secondary" disabled={busy || st.phase === 'syncing' || st.phase === 'confirm'} onClick={() => run(() => syncController.syncNow({ interactive: true }))}>
+              <button className="btn-secondary" disabled={busy || st.phase === 'syncing' || st.phase === 'confirm'} onClick={() => run(() => syncController.syncNow())}>
                 지금 동기화
               </button>
             )}
@@ -224,15 +250,24 @@ export function SyncSection() {
               className="btn-text danger"
               disabled={busy}
               onClick={() => {
-                if (window.confirm('Google 연결을 해제합니다. 이 기기의 기록은 지워지지 않고, Drive에 올라간 기록도 그대로 남습니다. 계속할까요?')) run(() => syncController.disconnect())
+                if (window.confirm('이 기기에서 Google 연결을 해제합니다. 이 기기의 기록과 Drive에 올라간 기록은 지워지지 않고, 다른 기기의 연결도 유지됩니다. 계속할까요?')) run(() => syncController.disconnect())
               }}
             >
-              연결 해제
+              이 기기에서 연결 해제
             </button>
           </div>
           <p className="hint">
-            브라우저 앱은 Google 로그인 상태가 약 1시간마다 만료됩니다. 만료되면 가능한 경우 조용히 갱신하고, 안 되면 ‘다시 연결’을 눌러야 하며 그동안의 기록은 이 기기에 안전하게 쌓입니다.
+            서버 없는 브라우저 앱은 Google 로그인(약 1시간 유효)을 사용자 클릭 없이 새로 받을 수 없습니다. 새로고침(F5)은 로그인이 남아 있으면 이어지고, 만료되거나 탭을 닫았다면 ‘다시 연결’ 한 번이 필요합니다. 그동안의 기록은 이 기기에 계속 쌓입니다.
           </p>
+          <details>
+            <summary>고급: Google 접근 권한 철회</summary>
+            <p className="hint">
+              Google 쪽에서 이 앱의 권한을 취소합니다. <strong>같은 계정으로 연결한 다른 기기도 모두 다시 연결해야 합니다.</strong> 기록은 지워지지 않습니다. 단순히 이 기기만 끊으려면 위의 ‘이 기기에서 연결 해제’를 쓰세요.
+            </p>
+            <button className="btn-danger" disabled={busy} onClick={revokeAccess}>
+              Google 접근 권한 철회…
+            </button>
+          </details>
 
           {(conflicts ?? []).length > 0 && (
             <div className="field" role="group" aria-label="동기화 충돌">

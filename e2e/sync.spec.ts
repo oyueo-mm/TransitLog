@@ -10,12 +10,16 @@ import { expectLayoutOk, expectNoSeriousA11y, fakeTrip, gotoApp, readDb, restore
 const configured = !!process.env.VITE_GOOGLE_CLIENT_ID
 
 const FAKE_GIS = `
+window.__gisRequests = [];
 window.google = { accounts: { oauth2: {
-  initTokenClient: (cfg) => ({ requestAccessToken: () => setTimeout(() => {
-    if (window.__gisFail) cfg.callback({ error: 'access_denied' })
+  initTokenClient: (cfg) => ({ requestAccessToken: (r) => { window.__gisRequests.push(r || {}); setTimeout(() => {
+    const mode = sessionStorage.getItem('e2e.gis')
+    if (mode === 'denied') cfg.callback({ error: 'access_denied' })
+    else if (mode === 'blocked') cfg.error_callback && cfg.error_callback({ type: 'popup_failed_to_open' })
+    else if (mode === 'closed') cfg.error_callback && cfg.error_callback({ type: 'popup_closed' })
     else cfg.callback({ access_token: 'fake-token', expires_in: 3600 })
-  }, 0) }),
-  revoke: (t, cb) => cb && cb(),
+  }, 0) } }),
+  revoke: (t, cb) => { window.__revoked = (window.__revoked || 0) + 1; sessionStorage.setItem('e2e.revoked', String(window.__revoked)); cb && cb() },
   hasGrantedAllScopes: () => true,
 } } };`
 
@@ -23,6 +27,10 @@ window.google = { accounts: { oauth2: {
 class MockDrive {
   file: { id: string; text: string; version: number } | null = null
   fail401 = 0
+  email = 'tester@example.test'
+  permissionId = 'p-1'
+  /** PATCH(쓰기) 응답을 늦춰 ‘동기화 중 새로고침’을 재현한다 */
+  patchDelayMs = 0
   requests: string[] = []
 
   async attach(ctx: BrowserContext) {
@@ -39,7 +47,7 @@ class MockDrive {
         this.fail401--
         return json({ error: { code: 401 } }, 401)
       }
-      if (url.pathname === '/drive/v3/about') return json({ user: { emailAddress: 'tester@example.test', permissionId: 'p-1' } })
+      if (url.pathname === '/drive/v3/about') return json({ user: { emailAddress: this.email, permissionId: this.permissionId } })
       if (url.pathname === '/drive/v3/files' && req.method() === 'GET') {
         expect(url.searchParams.get('spaces')).toBe('appDataFolder')
         return json({ files: this.file ? [{ id: this.file.id, version: String(this.file.version), createdTime: '2026-01-01T00:00:00Z' }] : [] })
@@ -57,6 +65,7 @@ class MockDrive {
         return json({ id: this.file.id, version: String(this.file.version), createdTime: '2026-01-01T00:00:00Z' })
       }
       if (m && req.method() === 'PATCH') {
+        if (this.patchDelayMs) await new Promise((r) => setTimeout(r, this.patchDelayMs))
         this.file!.text = req.postData() ?? ''
         this.file!.version++
         return json({ id: this.file!.id, version: String(this.file!.version) })
@@ -148,9 +157,17 @@ test.describe('Google Drive 동기화 — 연결됨(가상 Drive)', () => {
 
       // 연결 해제: 기록은 남는다
       A.page.once('dialog', (d) => d.accept())
-      await A.page.getByRole('button', { name: '연결 해제' }).click()
+      await A.page.getByRole('button', { name: '이 기기에서 연결 해제' }).click()
       await expect(A.page.getByRole('button', { name: 'Google 계정 연결' })).toBeVisible()
       expect(await readDb<TripRow>(A.page, 'trips')).toHaveLength(2)
+      // 이 기기만 해제: Google 권한 철회(revoke)는 호출되지 않았고, 저장된 로그인도 지워졌다
+      expect(await A.page.evaluate(() => sessionStorage.getItem('e2e.revoked'))).toBeNull()
+      expect(await A.page.evaluate(() => sessionStorage.getItem('transitlog.gtoken'))).toBeNull()
+      // 다른 기기(B)는 계속 동기화된다
+      await gotoApp(B.page, 'settings')
+      await B.page.getByRole('button', { name: '지금 동기화' }).click()
+      await expect(B.page.getByRole('status').filter({ hasText: '동기화 완료' })).toBeVisible()
+      expect(await readDb<TripRow>(B.page, 'trips')).toHaveLength(2)
     } finally {
       await A.ctx.close()
       await B.ctx.close()
@@ -177,6 +194,162 @@ test.describe('Google Drive 동기화 — 연결됨(가상 Drive)', () => {
       drive.fail401 = 0
       await page.getByRole('button', { name: '다시 연결' }).click()
       await expect(page.getByRole('status').filter({ hasText: '동기화 완료' })).toBeVisible()
+    } finally {
+      await ctx.close()
+    }
+  })
+})
+
+async function connectedPage(browser: import('@playwright/test').Browser, baseURL: string, drive: MockDrive, width = 360) {
+  const ctx = await browser.newContext({ baseURL, locale: 'ko-KR', timezoneId: 'Asia/Seoul', viewport: { width, height: 740 }, hasTouch: true, isMobile: true })
+  await drive.attach(ctx)
+  const page = await ctx.newPage()
+  await restoreBackup(page, { trips: [fakeTrip({ line: '1호선', boardTime: '08:00' })] })
+  await gotoApp(page, 'settings')
+  await page.getByRole('button', { name: 'Google 계정 연결' }).click()
+  await page.getByRole('button', { name: '합치고 동기화 시작' }).click()
+  await expect(page.getByRole('status').filter({ hasText: '동기화 완료' })).toBeVisible()
+  return { ctx, page }
+}
+const done = (page: Page) => expect(page.getByRole('status').filter({ hasText: '동기화 완료' })).toBeVisible()
+
+test.describe('Google Drive 동기화 — 새로고침과 재인증(가상 Drive)', () => {
+  test.skip(!configured, 'VITE_GOOGLE_CLIENT_ID 로 빌드했을 때만 실행')
+
+  test('F5: 로그인이 남아 있으면 다시 연결 없이 연결 상태가 유지되고, 토큰은 이 탭의 sessionStorage 에만 있다', async ({ browser, baseURL }) => {
+    const drive = new MockDrive()
+    const { ctx, page } = await connectedPage(browser, baseURL!, drive)
+    try {
+      await page.evaluate(() => (window as unknown as { __gisRequests: unknown[] }).__gisRequests.length)
+      await page.reload()
+      await expect(page.getByText('tester@example.test')).toBeVisible()
+      await done(page)
+      await expect(page.getByRole('button', { name: '다시 연결' })).toHaveCount(0)
+      // 새로고침 뒤 로그인 창을 다시 요청하지 않았다
+      expect(await page.evaluate(() => (window as unknown as { __gisRequests?: unknown[] }).__gisRequests?.length ?? 0)).toBe(0)
+      // 토큰은 sessionStorage 에만 있고 만료 시각이 함께 저장된다. localStorage·IndexedDB 설정에는 없다
+      const stored = await page.evaluate(() => JSON.parse(sessionStorage.getItem('transitlog.gtoken') ?? 'null'))
+      expect(stored.t).toBe('fake-token')
+      expect(stored.exp).toBeGreaterThan(Date.now())
+      expect(await page.evaluate(() => JSON.stringify({ ...localStorage }))).not.toContain('fake-token')
+      expect(JSON.stringify(await readDb(page, 'settings'))).not.toContain('fake-token')
+      expect(JSON.stringify(await readDb(page, 'syncMeta'))).not.toContain('fake-token')
+      expect(page.url()).not.toContain('fake-token')
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  test('저장된 토큰이 만료되었으면 쓰지 않고 재인증 필요를 표시하며 계정·마지막 동기화는 유지된다. 다시 연결하면 이어진다', async ({ browser, baseURL }) => {
+    const drive = new MockDrive()
+    const { ctx, page } = await connectedPage(browser, baseURL!, drive, 320)
+    try {
+      await page.evaluate(() => {
+        const s = JSON.parse(sessionStorage.getItem('transitlog.gtoken')!)
+        s.exp = Date.now() - 1000
+        sessionStorage.setItem('transitlog.gtoken', JSON.stringify(s))
+      })
+      const before = drive.requests.length
+      await page.reload()
+      await expect(page.getByRole('status').filter({ hasText: '재인증 필요' })).toBeVisible()
+      await expect(page.getByText('tester@example.test')).toBeVisible()
+      await expect(page.getByRole('button', { name: '다시 연결' })).toBeVisible()
+      expect(drive.requests.length).toBe(before) // 만료된 토큰으로 Drive 를 호출하지 않았다
+      expect(await page.evaluate(() => sessionStorage.getItem('transitlog.gtoken'))).toBeNull()
+      expect(await readDb<TripRow>(page, 'trips')).toHaveLength(1)
+      await expectLayoutOk(page, '재인증 필요 320px')
+      await expectNoSeriousA11y(page, '재인증 필요')
+      // 재인증 필요 중에도 기록 저장은 된다
+      await gotoApp(page, 'quick')
+      await page.getByRole('button', { name: '하차 기록 없이 저장' }).click()
+      await expect.poll(async () => (await readDb<TripRow>(page, 'trips')).length).toBe(2)
+      await gotoApp(page, 'settings')
+      await page.getByRole('button', { name: '다시 연결' }).click()
+      await done(page)
+      // 계정 힌트가 전달되었다
+      expect(await page.evaluate(() => (window as unknown as { __gisRequests: Array<{ login_hint?: string }> }).__gisRequests.at(-1)?.login_hint)).toBe('tester@example.test')
+      await expect.poll(() => (drive.file?.text.match(/"k":"trips:/g) ?? []).length).toBe(2)
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  test('재인증 중 팝업 차단·창 닫기는 재인증 필요를 유지하고 이유를 알린다', async ({ browser, baseURL }) => {
+    const drive = new MockDrive()
+    const { ctx, page } = await connectedPage(browser, baseURL!, drive)
+    try {
+      await page.evaluate(() => {
+        sessionStorage.removeItem('transitlog.gtoken')
+        sessionStorage.setItem('e2e.gis', 'blocked')
+      })
+      await page.reload()
+      await page.getByRole('button', { name: '다시 연결' }).click()
+      await expect(page.getByText(/로그인 창이 차단/)).toBeVisible()
+      await expect(page.getByRole('status').filter({ hasText: '재인증 필요' })).toBeVisible()
+      await page.evaluate(() => sessionStorage.setItem('e2e.gis', 'closed'))
+      await page.getByRole('button', { name: '다시 연결' }).click()
+      await expect(page.getByText(/로그인 창이 닫혀/)).toBeVisible()
+      await page.evaluate(() => sessionStorage.removeItem('e2e.gis'))
+      await page.getByRole('button', { name: '다시 연결' }).click()
+      await done(page)
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  test('권한 철회는 경고를 확인했을 때만 revoke 를 호출한다 (이 기기 연결 해제와 구분)', async ({ browser, baseURL }) => {
+    const drive = new MockDrive()
+    const { ctx, page } = await connectedPage(browser, baseURL!, drive)
+    try {
+      await page.getByText('고급: Google 접근 권한 철회').click()
+      let message = ''
+      page.once('dialog', (d) => (message = d.message(), void d.dismiss()))
+      await page.getByRole('button', { name: /Google 접근 권한 철회/ }).click()
+      await expect.poll(() => message).toContain('다른 기기')
+      expect(await page.evaluate(() => sessionStorage.getItem('e2e.revoked'))).toBeNull() // 취소하면 호출 없음
+      page.once('dialog', (d) => d.accept())
+      await page.getByRole('button', { name: /Google 접근 권한 철회/ }).click()
+      await expect(page.getByRole('button', { name: 'Google 계정 연결' })).toBeVisible()
+      expect(await page.evaluate(() => sessionStorage.getItem('e2e.revoked'))).toBe('1')
+      expect(await readDb<TripRow>(page, 'trips')).toHaveLength(1) // 기록 유지
+      expect(drive.file?.text).toContain('trips:') // Drive 기록 유지
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  test('동기화 중 새로고침해도 기록이 중복·유실되지 않고 다시 이어진다', async ({ browser, baseURL }) => {
+    const drive = new MockDrive()
+    const { ctx, page } = await connectedPage(browser, baseURL!, drive)
+    try {
+      await restoreBackup(page, { trips: [fakeTrip({ line: '2호선', boardTime: '09:00' })] })
+      await gotoApp(page, 'settings')
+      drive.patchDelayMs = 1500
+      await page.getByRole('button', { name: '지금 동기화' }).click()
+      await expect(page.getByRole('status').filter({ hasText: '동기화 중' })).toBeVisible()
+      await page.reload() // 쓰기 응답을 기다리는 중에 새로고침
+      drive.patchDelayMs = 0
+      await done(page)
+      await expect.poll(() => (drive.file?.text.match(/"k":"trips:/g) ?? []).length).toBe(2)
+      expect(await readDb<TripRow>(page, 'trips')).toHaveLength(2)
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  test('다른 Google 계정으로 로그인하면 확인 전에는 새 계정에 올리지 않는다', async ({ browser, baseURL }) => {
+    const drive = new MockDrive()
+    const { ctx, page } = await connectedPage(browser, baseURL!, drive)
+    try {
+      const other = new MockDrive()
+      other.email = 'other@example.test'
+      other.permissionId = 'p-2'
+      await ctx.unroute('https://www.googleapis.com/**')
+      await other.attach(ctx)
+      await page.getByRole('button', { name: '지금 동기화' }).click() // 같은 토큰으로 다른 계정 Drive 에 접속한 상황
+      await expect(page.getByRole('alertdialog', { name: '다른 계정 연결 확인' })).toBeVisible()
+      expect(other.file).toBeNull()
+      expect(await readDb<TripRow>(page, 'trips')).toHaveLength(1)
     } finally {
       await ctx.close()
     }

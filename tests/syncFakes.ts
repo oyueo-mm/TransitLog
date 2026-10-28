@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto'
 import { TransitDB } from '../src/db/db'
 import { DriveError, type DriveApi, type DriveFileMeta } from '../src/sync/drive'
 import { SYNC_FILE_NAME } from '../src/sync/types'
-import type { AcquireResult, AuthProvider } from '../src/sync/auth'
+import type { AcquireOptions, AcquireResult, AuthProvider } from '../src/sync/auth'
 
 /** 메모리 안의 가상 Google Drive (appDataFolder). 모든 기기가 공유한다. 실제 개인 데이터는 쓰지 않는다. */
 export class FakeCloud {
@@ -92,21 +92,32 @@ export class FakeAuth implements AuthProvider {
   configured = true
   token: string | null = 'tok'
   next: AcquireResult = { ok: true }
-  acquires: Array<{ interactive: boolean }> = []
+  acquires: Array<AcquireOptions> = []
   revoked = 0
+  forgotten = 0
+  preloads = 0
+  /** acquire 가 끝나기까지 걸리는 시간(ms) — 중복 요청 테스트용 */
+  delay = 0
   getToken() {
     return this.token
   }
-  async acquire(o: { interactive: boolean }): Promise<AcquireResult> {
-    this.acquires.push({ interactive: o.interactive })
+  preload() {
+    this.preloads++
+  }
+  async acquire(o: AcquireOptions): Promise<AcquireResult> {
+    this.acquires.push(o)
+    if (this.delay) await new Promise((r) => setTimeout(r, this.delay))
     if (this.next.ok) this.token = 'tok'
     return this.next
   }
   async revoke() {
+    const had = !!this.token
     this.revoked++
     this.token = null
+    return had
   }
   forget() {
+    this.forgotten++
     this.token = null
   }
 }
