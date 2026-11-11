@@ -33,8 +33,8 @@ export function orderEvents(trip: Pick<Trip, 'boardTime'>, events: SeatEvent[]):
  * 예전 명시적 완결(true)은 유지하며, 진행 중·하차 시각 미기록의 null/false는 추정하지 않는다.
  * 데이터 자체를 변경하지 않고 기존 백업을 포함한 조회 시 계산한다.
  */
-export function isSeatLogComplete(trip: Pick<Trip, 'kind' | 'ongoing' | 'alightTime' | 'seatLogComplete'>): boolean {
-  return trip.seatLogComplete === true || (trip.kind === 'ride' && !trip.ongoing && parseHm(trip.alightTime) !== null)
+export function isSeatLogComplete(trip: Pick<Trip, 'seatLogComplete'> & Partial<Pick<Trip, 'kind' | 'ongoing' | 'alightTime'>>): boolean {
+  return trip.seatLogComplete === true || (trip.kind === 'ride' && trip.ongoing === false && parseHm(trip.alightTime ?? null) !== null)
 }
 
 export function summarizeSeat(trip: Trip, rawEvents: SeatEvent[]): SeatSummary {
