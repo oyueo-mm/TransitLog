@@ -128,7 +128,7 @@ test.describe('고급 검색', () => {
     await gotoApp(page, 'stats')
     await expect(page.getByText('시간대별 착석 분석')).toBeVisible()
     await page.getByRole('link', { name: /08:15~08:29/ }).first().click()
-    await expect(page).toHaveURL(/#\\/calendar\\?view=list/)
+    await expect(page).toHaveURL(/#\/calendar\?view=list/)
     await expect(cards(page)).toHaveCount(1)
   })
 
