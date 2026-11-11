@@ -253,7 +253,7 @@ describe('좌석 상태 구간 나누기', () => {
   })
 
   it('마지막 변화 이후 완결 확인이 없으면 남은 구간은 미확인', () => {
-    const t = trip({ boardTime: '08:00', alightTime: null, initialSeat: 'standing', seatLogComplete: null })
+    const t = trip({ boardTime: '08:00', alightTime: null, initialSeat: 'standing', seatLogComplete: null, ongoing: true })
     const { segments, notes } = seatSegments(t, [mkEvent(t.id, { time: '08:10', state: 'seated' })], 480, 520)
     // 08:10 에 앉았다는 사실(눈금)은 남지만, 그 뒤 변화가 없었는지 모르므로 이후 구간은 미확인
     expect(segments.map((s) => [s.state, s.start, s.end])).toEqual([
