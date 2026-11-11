@@ -118,7 +118,7 @@ test.describe('고급 검색', () => {
     const outcome = (label: string) => chip(page, '좌석 상태', label)
     await outcome('한 번이라도 착석').click()
     await expect(cards(page)).toHaveCount(2)
-    await expect(cards(page).nth(0)).toContainText('처음부터 착석')
+    await expect(cards(page).last()).toContainText('처음부터 착석')
     await outcome('한 번이라도 착석').click()
     await outcome('끝까지 서 있었음').click()
     await expect(cards(page)).toHaveCount(1)
