@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   averageDuration,
+  byBoardingInterval,
+  byRoute,
+  fillEmptyPeriods,
   byCarDoor,
   byTrainDestination,
   byWeekday,
@@ -56,6 +59,31 @@ describe('통계', () => {
   })
   it('요일별 집계', () => {
     expect(byWeekday(rows)[0].key).toBe('월')
+  })
+  it('시간 구간은 15분 단위로 묶고 승차 시각 없는 기록은 제외한다', () => {
+    const groups = byBoardingInterval(rows, 15)
+    expect(groups.find((g) => g.from === '08:00')?.count).toBe(2)
+    expect(groups.find((g) => g.from === '08:00')?.seat.immediate.den).toBe(2)
+  })
+  it('같은 승하차 장소라도 노선이 다르면 별도의 구간으로 집계한다', () => {
+    const r1 = mkTrip({ line: '1호선', boardPlace: '가역', alightPlace: '나역' })
+    const r2 = mkTrip({ line: '2호선', boardPlace: '가역', alightPlace: '나역' })
+    expect(byRoute(rideRows([r1, r2], [])).map((g) => g.key)).toEqual([
+      '1호선 · 가역 → 나역', '2호선 · 가역 → 나역',
+    ])
+  })
+  it('일·주·월별 빈 구간을 0건으로 채운다', () => {
+    expect(fillEmptyPeriods([{ key: '2026-03-03', count: 2 }], 'day', '2026-03-02', '2026-03-04')).toEqual([
+      { key: '2026-03-02', count: 0 },
+      { key: '2026-03-03', count: 2 },
+      { key: '2026-03-04', count: 0 },
+    ])
+    expect(fillEmptyPeriods([], 'week', '2026-03-02', '2026-03-15')).toHaveLength(2)
+    expect(fillEmptyPeriods([], 'month', '2026-01-01', '2026-03-31').map((x) => x.key)).toEqual(['2026-01','2026-02','2026-03'])
+  })
+  it('시간을 모르는 경우에도 직접 기재한 소요 시간은 평균에 포함한다', () => {
+    const r = mkTrip({ boardTime: null, alightTime: null, reportedDurationMin: 37 })
+    expect(averageDuration(rideRows([r], []))).toEqual({ avg: 37, n: 1 })
   })
   it('표본이 없으면 비율은 null', () => {
     expect(ratio(0, 0).pct).toBeNull()
