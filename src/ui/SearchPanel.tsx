@@ -319,7 +319,7 @@ export function SearchPanel({ trips, events }: { trips: Trip[]; events: SeatEven
       </div>
       {activeLabels.length > 0 && <div className="chips active-search-filters" aria-label="적용 중인 주요 조건">
         {activeLabels.map((item, i) => <button type="button" className="chip is-on is-small" key={i} onClick={item.clear}>{item.label} <X size={12} className="inline-icon" /></button>)}
-      </div>
+      </div>}
       <div className="row-between">
         <button type="button" className="btn-small" aria-expanded={open} aria-controls="adv-filters" onClick={() => setOpen(!open)}>
           상세 조건 {open ? '접기' : '펼치기'}
