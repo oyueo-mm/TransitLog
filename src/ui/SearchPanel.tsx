@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, ChevronUp, Clock3, X } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   EMPTY_FILTERS,
   activeFilterCount,
@@ -158,7 +158,34 @@ function SearchResultCard({ m }: { m: SearchMatch }) {
 }
 
 export function SearchPanel({ trips, events }: { trips: Trip[]; events: SeatEvent[] }) {
-  const [init] = useState(load)
+  const [urlParams] = useSearchParams()
+  const [init] = useState(() => {
+    const saved = load()
+    if (urlParams.get('view') !== 'list') return saved
+    const boardFrom = urlParams.get('boardFrom')
+    const boardTo = urlParams.get('boardTo')
+    const from = urlParams.get('dateFrom')
+    const to = urlParams.get('dateTo')
+    const line = urlParams.get('line')
+    const useTime = boardFrom !== null || boardTo !== null
+    const useDate = from !== null || to !== null
+    if (!useTime && !useDate && !line) return saved
+    return {
+      ...saved,
+      group: 'time' as const,
+      filters: {
+        ...EMPTY_FILTERS,
+        boardFrom: boardFrom && parseHm(boardFrom) !== null ? boardFrom : null,
+        boardTo: boardTo && parseHm(boardTo) !== null ? boardTo : null,
+        quick: useDate ? 'custom' as const : 'all' as const,
+        dateFrom: from || null,
+        dateTo: to || null,
+        lines: line ? [line] : [],
+      },
+      shown: PAGE,
+      scrollY: 0,
+    }
+  })
   const [filters, setFilters] = useState<SearchFilters>(init.filters)
   const [sort, setSort] = useState<SortKey>(init.sort)
   const [shown, setShown] = useState(init.shown)
