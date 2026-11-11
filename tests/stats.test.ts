@@ -38,8 +38,8 @@ describe('통계', () => {
     expect(s.everSeated.den).toBe(3)
     expect(s.everSeated.num).toBe(2)
   })
-  it('최종 착석률은 하차가 기록된 탑승과 수동 완결된 탑승을 포함', () => {
-    expect(seatRatios(rows).final.den).toBe(2)
+  it('최종 착석률은 하차 시각이 없어도 종료된 탑승의 마지막 좌석을 포함', () => {
+    expect(seatRatios(rows).final.den).toBe(3)
   })
   it('칸·문별 집계는 위치가 없는 기록을 제외', () => {
     const g = byCarDoor(rows)
