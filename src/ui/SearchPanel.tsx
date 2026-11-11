@@ -253,23 +253,46 @@ export function SearchPanel({ trips, events }: { trips: Trip[]; events: SeatEven
 
   return (
     <div data-testid="search-panel">
-      <div className="field">
-        <label className="field-label" htmlFor="q">
-          검색
-        </label>
-        <input id="q" type="search" placeholder="노선·역·행선지·칸-문(10-3)·앉음·메모" value={filters.q} onChange={(e) => set({ q: e.target.value })} />
-        <div className="hint">공백·대소문자는 무시하고, 여러 단어는 모두 맞아야 합니다. ‘수원’과 ‘수원역’은 같은 역으로 찾습니다.</div>
+      <div className="time-search-panel">
+        <div className="field-label"><Clock3 size={16} className="inline-icon" /> 탑승 시간</div>
+        <Range label="승차 시각" kind="time" from={filters.boardFrom} to={filters.boardTo} onChange={(a, b) => set({ boardFrom: a, boardTo: b })} />
+        <div className="chips filter" role="group" aria-label="시간 빠른 선택">
+          <Chip value="morning" selected={filters.boardFrom === '06:00' && filters.boardTo === '10:00'} onSelect={() => set({ boardFrom: '06:00', boardTo: '10:00' })} small>아침 06~10시</Chip>
+          <Chip value="evening" selected={filters.boardFrom === '16:00' && filters.boardTo === '21:00'} onSelect={() => set({ boardFrom: '16:00', boardTo: '21:00' })} small>저녁 16~21시</Chip>
+          <button type="button" className="btn-small" onClick={() => set({ boardFrom: null, boardTo: null })} disabled={!timeActive}>시간 초기화</button>
+        </div>
+        <div className="time-center-row">
+          <label className="field-label" htmlFor="time-center">기준 시각</label>
+          <input type="time" id="time-center" value={center} onChange={(e) => setCenter(e.target.value)} />
+          <div className="chips" role="group" aria-label="기준 시각 전후 검색">
+            {([5, 10, 15] as const).map((minutes) => <button type="button" key={minutes} className="chip is-small" onClick={() => applyTimeWindow(minutes)}>±{minutes}분</button>)}
+          </div>
+        </div>
+        <p className="hint">시간은 실제 탑승 시각 기준입니다. 자정을 넘는 범위도 검색할 수 있습니다.</p>
       </div>
-
-      <div className="chips filter" role="group" aria-label="기간">
-        {quick.map(([v, l]) => (
-          <Chip key={v} value={v} selected={filters.quick === v} onSelect={(q) => set({ quick: q })} small>
-            {l}
-          </Chip>
-        ))}
+      <div className="chips filter" role="group" aria-label="날짜">
+        {quick.map(([v, l]) => <Chip key={v} value={v} selected={filters.quick === v} onSelect={(q) => set({ quick: q })} small>{l}</Chip>)}
       </div>
       {filters.quick === 'custom' && <Range label="날짜 범위" kind="date" from={filters.dateFrom} to={filters.dateTo} onChange={(a, b) => set({ dateFrom: a, dateTo: b })} />}
-
+      <div className="search-primary">
+        <TagPicker label="노선·버스 번호" values={filters.lines} suggestions={sug.lines} onChange={(lines) => set({ lines })} />
+        <TagPicker label="승차역" values={filters.boardStations} suggestions={sug.board} onChange={(boardStations) => set({ boardStations })} />
+        <TagPicker label="열차 행선지" values={filters.destinations} suggestions={sug.dest} onChange={(destinations) => set({ destinations })} />
+        <Multi<number> label="요일" options={WEEKDAY_NAMES.map((w, i) => ({ value: i, label: w }))} values={filters.weekdays} onChange={(weekdays) => set({ weekdays })} />
+        <Multi<SeatInitial>
+          label="탑승 시 좌석"
+          options={[{ value: 'seated', label: '처음부터 앉아서' }, { value: 'standing', label: '서서 탑승' }, { value: 'unrecorded', label: '미기록' }]}
+          values={filters.seatInitial} onChange={(seatInitial) => set({ seatInitial })}
+        />
+        <Multi<SeatChange>
+          label="탑승 중 좌석 변화"
+          options={[{ value: 'midSeat', label: '중간 착석함' }, { value: 'stoodAll', label: '끝까지 서 있었음(확인)' }, { value: 'seatedAll', label: '끝까지 앉아 있었음(확인)' }, { value: 'unconfirmed', label: '변화 기록 없음·미확인' }]}
+          values={filters.seatChange} onChange={(seatChange) => set({ seatChange })}
+        />
+      </div>
+      {activeLabels.length > 0 && <div className="chips active-search-filters" aria-label="적용 중인 주요 조건">
+        {activeLabels.map((item, i) => <button type="button" className="chip is-on is-small" key={i} onClick={item.clear}>{item.label} <X size={12} className="inline-icon" /></button>)}
+      </div>
       <div className="row-between">
         <button type="button" className="btn-small" aria-expanded={open} aria-controls="adv-filters" onClick={() => setOpen(!open)}>
           상세 조건 {open ? '접기' : '펼치기'}
@@ -282,20 +305,19 @@ export function SearchPanel({ trips, events }: { trips: Trip[]; events: SeatEven
 
       {open && (
         <div id="adv-filters" className="adv" data-testid="adv-filters">
+          <div className="field">
+            <label className="field-label" htmlFor="q">키워드 검색</label>
+            <input id="q" type="search" aria-label="검색" placeholder="노선·역·칸-문(10-3)·착석·메모" value={filters.q} onChange={(e) => set({ q: e.target.value })} />
+            <div className="hint">여러 단어는 모두 일치해야 합니다. 좌석 변화 이벤트의 시각·역·메모도 검색합니다.</div>
+          </div>
           <Multi<Mode> label="교통수단" options={(Object.keys(MODE_LABEL) as Mode[]).map((v) => ({ value: v, label: MODE_LABEL[v] }))} values={filters.modes} onChange={(modes) => set({ modes })} />
           <Multi<RecordKind> label="기록 종류" options={(Object.keys(KIND_LABEL) as RecordKind[]).map((v) => ({ value: v, label: KIND_LABEL[v] }))} values={filters.kinds} onChange={(kinds) => set({ kinds })} />
           <Multi<Purpose> label="목적" options={(Object.keys(PURPOSE_LABEL) as Purpose[]).map((v) => ({ value: v, label: PURPOSE_LABEL[v] }))} values={filters.purposes} onChange={(purposes) => set({ purposes })} />
-          <Multi<number> label="요일" options={WEEKDAY_NAMES.map((w, i) => ({ value: i, label: w }))} values={filters.weekdays} onChange={(weekdays) => set({ weekdays })} />
 
-          <TagPicker label="노선·버스 번호" values={filters.lines} suggestions={sug.lines} onChange={(lines) => set({ lines })} />
-          <TagPicker label="승차역" values={filters.boardStations} suggestions={sug.board} onChange={(boardStations) => set({ boardStations })} />
           <TagPicker label="하차역" values={filters.alightStations} suggestions={sug.alight} onChange={(alightStations) => set({ alightStations })} />
-          <TagPicker label="열차 행선지" values={filters.destinations} suggestions={sug.dest} onChange={(destinations) => set({ destinations })} />
           <TagPicker label="열차 출발지" values={filters.origins} suggestions={sug.origin} onChange={(origins) => set({ origins })} />
 
-          <Range label="승차 시각" kind="time" from={filters.boardFrom} to={filters.boardTo} onChange={(a, b) => set({ boardFrom: a, boardTo: b })} />
           <Range label="하차 시각" kind="time" from={filters.alightFrom} to={filters.alightTo} onChange={(a, b) => set({ alightFrom: a, alightTo: b })} />
-          <div className="hint">시작이 끝보다 늦으면 자정을 넘는 범위(예: 22:00~02:00)로 봅니다. 시각이 기록되지 않은 기록은 시각 조건에서 빠집니다.</div>
           <div className="field" role="group" aria-label="소요 시간">
             <div className="field-label">소요 시간(분)</div>
             <div className="field-row">
@@ -307,28 +329,6 @@ export function SearchPanel({ trips, events }: { trips: Trip[]; events: SeatEven
             </div>
           </div>
 
-          <Multi<SeatInitial>
-            label="탑승 시 좌석"
-            options={[
-              { value: 'seated', label: '처음부터 앉아서' },
-              { value: 'standing', label: '서서 탑승' },
-              { value: 'unrecorded', label: '미기록' },
-            ]}
-            values={filters.seatInitial}
-            onChange={(seatInitial) => set({ seatInitial })}
-          />
-          <Multi<SeatChange>
-            label="탑승 중 좌석 변화"
-            options={[
-              { value: 'midSeat', label: '중간 착석함' },
-              { value: 'stoodAll', label: '끝까지 서 있었음(확인)' },
-              { value: 'seatedAll', label: '끝까지 앉아 있었음(확인)' },
-              { value: 'unconfirmed', label: '변화 기록 없음·미확인' },
-            ]}
-            values={filters.seatChange}
-            onChange={(seatChange) => set({ seatChange })}
-            hint="‘끝까지’는 좌석 변화 기록을 완결로 확인한 탑승만 해당합니다."
-          />
           <Multi<SeatFinal>
             label="최종 좌석 상태"
             options={[
@@ -370,92 +370,38 @@ export function SearchPanel({ trips, events }: { trips: Trip[]; events: SeatEven
           <select id="sort" value={sort} onChange={(e) => setSort(e.target.value as SortKey)}>
             <option value="newest">최신순</option>
             <option value="oldest">오래된순</option>
+            <option value="timeAsc">탑승 시각 빠른 순</option>
+            <option value="timeDesc">탑승 시각 늦은 순</option>
             <option value="durationDesc">소요 시간 긴 순</option>
             <option value="durationAsc">소요 시간 짧은 순</option>
           </select>
         </div>
       </div>
+      <div className="search-result-options">
+        <div className="seg" role="group" aria-label="결과 묶음">
+          <button type="button" className={`seg-btn ${group === 'date' ? 'is-on' : ''}`} aria-pressed={group === 'date'} onClick={() => setGroup('date')}>날짜별</button>
+          <button type="button" className={`seg-btn ${group === 'time' ? 'is-on' : ''}`} aria-pressed={group === 'time'} onClick={() => setGroup('time')}>시간대별</button>
+        </div>
+        {group === 'time' && <div className="field-row">
+          <label className="field-label" htmlFor="time-step">간격</label>
+          <select id="time-step" value={step} onChange={(e) => setStep(Number(e.target.value) as TimeStep)}>
+            {[5, 10, 15, 30, 60].map((v) => <option key={v} value={v}>{v === 60 ? '1시간' : `${v}분`}</option>)}
+          </select>
+        </div>}
+      </div>
       {(sort === 'durationDesc' || sort === 'durationAsc') && noDur > 0 && <p className="hint">소요 시간을 알 수 없는 {noDur}건은 순서와 관계없이 맨 뒤에 둡니다.</p>}
-
-      {matches.length > 0 && (
-        <details className="result-stats" data-testid="result-stats" open>
-          <summary>검색 결과 통계</summary>
-          <p className="hint">
-            일치한 {matches.length}건 중 탑승 <strong>{stat.rows.length}건</strong>으로 계산합니다.{stat.nonRide > 0 ? ` 놓침·관찰 ${stat.nonRide}건은 제외.` : ''} 통계 화면과 같은 정의·함수를 씁니다.
-          </p>
-          {stat.rows.length === 0 ? (
-            <Empty>탑승 기록이 없어 통계를 계산하지 않았습니다.</Empty>
-          ) : (
-            <>
-              {stat.rows.length < MIN_SAMPLE && (
-                <div className="notice" role="note">
-                  <TriangleAlert size={14} className="inline-icon" /> 일치한 탑승이 {stat.rows.length}건뿐이라 비율을 일반화하기에는 표본이 부족합니다.
-                </div>
-              )}
-              <dl className="metrics">
-                <SeatMetric title="즉시 착석률" num={stat.seat.immediate.num} den={stat.seat.immediate.den} total={stat.cov.total} def="탑승 시점에 이미 앉아 있던 비율 (탑승 시 좌석을 기록한 탑승만)" reasons={[['탑승 시 좌석 상태를 기록하지 않음', stat.cov.immediate.unknown]]} />
-                <SeatMetric
-                  title="한 번이라도 착석한 비율"
-                  num={stat.seat.everSeated.num}
-                  den={stat.seat.everSeated.den}
-                  total={stat.cov.total}
-                  def="앉은 것이 확인된 기록과 ‘끝까지 서 있었음’을 확인한 기록만 셉니다"
-                  reasons={[
-                    ['서서 탔지만 이후 앉았는지 확인하지 않음', stat.cov.ever.unconfirmedStanding],
-                    ['좌석 정보가 없음', stat.cov.ever.unknown],
-                  ]}
-                />
-                <div>
-                  <dt>평균 탑승 시간</dt>
-                  <dd data-testid="stat-duration">
-                    {stat.dur.avg === null ? '—' : formatDuration(Math.round(stat.dur.avg))} <span className="muted">(표본 {stat.dur.n})</span>
-                  </dd>
-                  <dd className="def">승·하차 시각이 있는 탑승만</dd>
-                  {stat.dur.n > 0 && sampleNote(stat.dur.n, stat.rows.length).insufficient && <dd className="caution"><TriangleAlert size={14} className="inline-icon" /> 표본 부족</dd>}
-                </div>
-                <div>
-                  <dt>서서 탄 뒤 착석까지 평균</dt>
-                  <dd data-testid="stat-toseat">
-                    {stat.toSeat.avg === null ? '—' : formatDuration(Math.round(stat.toSeat.avg))} <span className="muted">(표본 {stat.toSeat.n})</span>
-                  </dd>
-                  <dd className="def">서서 탑승 → 첫 착석, 두 시각이 모두 있는 탑승만</dd>
-                  {stat.toSeat.n > 0 && stat.toSeat.n < MIN_SAMPLE && <dd className="caution"><TriangleAlert size={14} className="inline-icon" /> 표본 부족</dd>}
-                </div>
-                <div>
-                  <dt>혼잡도 분포</dt>
-                  {stat.crowd.n === 0 ? (
-                    <dd>—</dd>
-                  ) : (
-                    <dd>
-                      <Bars items={(Object.keys(CROWDING_LABEL) as Crowding[]).map((c) => ({ key: CROWDING_LABEL[c], count: stat.crowd.dist[c] }))} max={stat.crowd.n} />
-                      <span className="muted small">혼잡도가 기록된 {stat.crowd.n}건 기준 (탑승 {stat.rows.length}건 중)</span>
-                    </dd>
-                  )}
-                </div>
-              </dl>
-            </>
-          )}
-        </details>
-      )}
 
       {matches.length === 0 ? (
         <Empty>{trips.length === 0 ? '아직 기록이 없습니다.' : '조건에 맞는 기록이 없습니다. 조건을 줄이거나 초기화해 보세요.'}</Empty>
       ) : (
-        grouped.map(([date, list]) => (
-          <div key={date} className="group" data-testid="result-group">
+        grouped.map(([key, list]) => (
+          <div key={key} className="group" data-testid="result-group">
             <h3>
-              <Link to={`/day/${date}`}>
-                {date} ({WEEKDAY_NAMES[parseDate(date).getDay()]})
-              </Link>
+              {group === 'date' ? <Link to={`/day/${key}`}>{key} ({WEEKDAY_NAMES[parseDate(key).getDay()]})</Link> : <span>{key}</span>}
               <span className="muted small"> · {list.length}건</span>
             </h3>
-            <div className="timeline">
-              {list.map((m) => (
-                <div key={m.rec.trip.id} className="result-item" data-trip-id={m.rec.trip.id}>
-                  <TripCard trip={m.rec.trip} events={m.rec.events} to={`/trip/${m.rec.trip.id}`} linkState={{ from: '/calendar' }} />
-                  <Highlight m={m} />
-                </div>
-              ))}
+            <div className="search-result-list">
+              {list.map((m) => <div key={m.rec.trip.id} className="result-item" data-trip-id={m.rec.trip.id}><SearchResultCard m={m} /></div>)}
             </div>
           </div>
         ))
