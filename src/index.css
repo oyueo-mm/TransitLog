@@ -1592,3 +1592,19 @@ a.btn-text {
   .time-stat-row > span:nth-child(3)::before { content: '착석 대기 '; color: var(--muted); }
   .time-stat-row > span:nth-child(4)::before { content: '즉시 착석 '; color: var(--muted); }
 }
+
+
+/* 검색 시각 선택: 빠른 기록과 동일한 휠을 재사용하고 브라우저 기본 시간 UI의 겹침을 방지한다. */
+.search-time-range { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.search-time-range > .collapsed-time, .time-center-row > .collapsed-time { min-width: 0; margin: 0; border: 1px solid var(--border); border-radius: 10px; padding: 6px 8px; background: var(--surface); }
+.search-time-range .collapsed-time-row, .time-center-row .collapsed-time-row { min-width: 0; }
+.search-time-range .daytime-summary, .time-center-row .daytime-summary { min-width: 0; padding: 6px 2px; gap: 4px; }
+.search-time-range .daytime-summary output, .time-center-row .daytime-summary output { white-space: nowrap; overflow-wrap: normal; }
+.search-time-range .now-btn, .time-center-row .now-btn { flex: 0 0 auto; }
+.time-center-row > .collapsed-time { flex: 1 1 225px; max-width: 390px; }
+.time-center-row > .chips { flex: 1 1 230px; min-width: 0; }
+.search-time-field > .field-label { margin-bottom: 6px; }
+@media (max-width: 600px) {
+  .search-time-range { grid-template-columns: minmax(0,1fr); gap: 8px; }
+  .time-center-row > .collapsed-time { max-width: none; }
+}
