@@ -128,8 +128,8 @@ test.describe('빠른 기록과 저장', () => {
     await expect(metric('즉시 착석률')).toContainText('0%')
     await expect(metric('즉시 착석률')).toContainText('(0/2)')
     await expect(metric('한 번이라도 착석한 비율')).toContainText('(2/2)')
-    // 좌석 변화 기록 완결을 확인하지 않았으므로 최종 착석률은 계산하지 않는다
-    await expect(metric('최종 착석률')).toContainText('표본 없음')
+    // 하차가 끝나면 별도 확인 없이 최종 좌석 상태도 판정한다
+    await expect(metric('최종 착석률')).toContainText('(2/2)')
     await expect(page.locator('.totals > div', { hasText: '탑승' }).first()).toContainText('2회')
   })
 })
