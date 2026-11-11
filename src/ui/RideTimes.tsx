@@ -13,7 +13,7 @@ export function RideTimes({ trip, showDate = false }: { trip: Trip; showDate?: b
           <span className="ride-times-part">승차 <strong>{trip.boardTime ?? '시각 미기록'}</strong></span>
           <span className="ride-times-arrow" aria-hidden="true">→</span>
           <span className="ride-times-part">하차 <strong className={trip.ongoing ? 'live' : ''}>{trip.ongoing ? '탑승 중' : trip.alightTime ?? '시각 미기록'}</strong></span>
-          {duration !== null && <span className="ride-times-duration">· {formatDuration(duration)}{!trip.alightTime && <span className="ride-times-reported"> (소요 시간만 기록)</span>}</span>}
+          {duration !== null && <span className="ride-times-duration">· {formatDuration(duration)}{(!trip.boardTime || !trip.alightTime) && <span className="ride-times-reported"> (소요 시간만 기록)</span>}</span>}
         </>
       ) : (
         <span className="ride-times-part">{trip.kind === 'observed' ? '관찰' : '놓침'} <strong>{trip.boardTime ?? '시각 미기록'}</strong></span>
