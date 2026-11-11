@@ -4,6 +4,8 @@ import { formatTrainRoute } from '../domain/stations'
 import { clearToast, type ToastState } from './hooks'
 import { diffMinutes, formatDuration } from '../domain/time'
 import { summarizeSeat, tripDuration } from '../domain/seat'
+import { seatChangePath } from '../domain/seatCard'
+import { SeatStatus } from './SeatStatus'
 import {
   BUS_DOOR_LABEL,
   CROWDING_LABEL,
@@ -112,7 +114,6 @@ export function TripCard(props: { trip: Trip; events: SeatEvent[]; to?: string; 
   const { trip: t, events } = props
   const ongoing = t.kind === 'ride' && t.ongoing
   const dur = tripDuration(t)
-  const seat = seatText(t, events)
   const pos: string[] = []
   if (t.mode === 'subway') {
     if (t.car !== null || t.door !== null) pos.push(`${t.car ?? '?'}-${t.door ?? '?'}`)
@@ -120,10 +121,22 @@ export function TripCard(props: { trip: Trip; events: SeatEvent[]; to?: string; 
   } else if (t.busDoor) pos.push(BUS_DOOR_LABEL[t.busDoor])
   if (t.waitOrder !== null) pos.push(`${t.waitOrder}번째`)
   const route = [t.boardPlace, t.alightPlace].some(Boolean) ? `${t.boardPlace ?? '?'} → ${t.alightPlace ?? '?'}` : null
+  const trainRoute = formatTrainRoute(t.trainOrigin, t.trainDestination)
+  const seatPath = seatChangePath(t, events)
 
   const body = (
     <>
-      <div className="card-top">
+      <div className="card-summary">
+        <strong className="card-line">{t.line ?? (t.mode === 'subway' ? '노선 미기록' : '버스 번호 미기록')}</strong>
+        {t.kind === 'ride' ? <SeatStatus trip={t} events={events} /> : <span className={`badge kind-${t.kind}`}>{KIND_LABEL[t.kind]}</span>}
+      </div>
+      {(route || trainRoute) && (
+        <div className="card-route">
+          {route && <span>{route}</span>}
+          {trainRoute && <span className="muted small">{trainRoute}</span>}
+        </div>
+      )}
+      <div className="card-time-meta">
         <div className="time">
           {t.boardTime ?? '--:--'}
           {(t.alightTime || ongoing) && <span className="arrow"> → </span>}
@@ -131,24 +144,19 @@ export function TripCard(props: { trip: Trip; events: SeatEvent[]; to?: string; 
           {dur !== null && <span className="dur">{formatDuration(dur)}</span>}
         </div>
         <div className="badges">
-          {t.kind !== 'ride' && <span className={`badge kind-${t.kind}`}>{KIND_LABEL[t.kind]}</span>}
           {t.purpose && <span className="badge">{PURPOSE_LABEL[t.purpose]}</span>}
           <span className="badge mode">{MODE_LABEL[t.mode]}</span>
+          {t.service && t.service !== 'normal' && <span className="badge">{SERVICE_LABEL[t.service]}</span>}
         </div>
       </div>
-      <div className="card-main">
-        <strong>{t.line ?? (t.mode === 'subway' ? '노선 미기록' : '버스 번호 미기록')}</strong>
-        {route && <span> · {route}</span>}
-        {formatTrainRoute(t.trainOrigin, t.trainDestination) && <span> · {formatTrainRoute(t.trainOrigin, t.trainDestination)}</span>}
-        {t.service && t.service !== 'normal' && <span className="badge">{SERVICE_LABEL[t.service]}</span>}
-      </div>
-      {pos.length > 0 && <div className="card-sub">{pos.join(' · ')}</div>}
-      {t.kind === 'ride' && (
-        <div className="card-sub">
-          {seat.length ? seat.join(' → ') : <span className="muted">좌석 미기록</span>}
+      {(pos.length > 0 || t.crowding) && (
+        <div className="card-sub card-meta">
+          {pos.length > 0 && <span>{pos.join(' · ')}</span>}
           {t.crowding && <span className={`badge crowd-${t.crowding}`}>{CROWDING_LABEL[t.crowding]}</span>}
         </div>
       )}
+      {seatPath && <div className="seat-change-path">{seatPath}</div>}
+      {t.kind === 'ride' && events.length === 1 && <div className="seat-change-path">{seatText(t, events).join(' → ')}</div>}
       {(t.incident || (t.delayMinutes ?? 0) > 0) && (
         <div className="card-sub warn">
           {t.incident}
@@ -159,9 +167,7 @@ export function TripCard(props: { trip: Trip; events: SeatEvent[]; to?: string; 
     </>
   )
   return props.to ? (
-    <Link className="card" to={props.to} state={props.linkState}>
-      {body}
-    </Link>
+    <Link className="card" to={props.to} state={props.linkState}>{body}</Link>
   ) : (
     <div className="card">{body}</div>
   )
