@@ -207,7 +207,7 @@ export function StatsPage() {
             </dl>
           </Section>
 
-          <Section title="탑승 횟수">
+          <Section title="이용 패턴 · 탑승 횟수">
             <div className="chips filter" role="group" aria-label="집계 단위">
               {([['day', '일별'], ['week', '주별'], ['month', '월별']] as Array<[Bucket, string]>).map(([b, l]) => (
                 <Chip key={b} value={b} selected={bucket === b} onSelect={setBucket} small>
@@ -217,6 +217,43 @@ export function StatsPage() {
             </div>
             <Bars items={perShown} />
             <p className="hint">{bucket === 'week' ? '주 시작: 월요일 날짜' : ''}</p>
+          </Section>
+
+          <Section title="시간대별 착석 분석">
+            <div className="row-between">
+              <p className="hint">탑승 시각 기준. 각 시간대의 판정 가능한 기록만 착석률 분모에 포함합니다.</p>
+              <div className="field-row">
+                <label className="field-label" htmlFor="stats-step">간격</label>
+                <select id="stats-step" value={timeStep} onChange={(e) => setTimeStep(Number(e.target.value) as TimeInterval)}>
+                  {[5, 10, 15, 30, 60].map((n) => <option value={n} key={n}>{n === 60 ? '1시간' : `${n}분`}</option>)}
+                </select>
+              </div>
+            </div>
+            {timeGroups.length === 0 ? <Empty>탑승 시각이 기록된 건이 없습니다.</Empty> : (
+              <div className="time-stat-list">
+                <div className="time-stat-head"><span>시간대</span><span>즉시 착석률</span><span>평균 착석 대기</span><span>표본</span></div>
+                {timeGroups.map((g) => {
+                  const pct = g.seat.immediate.pct
+                  const qs = new URLSearchParams({ view: 'list', boardFrom: g.from, boardTo: g.to })
+                  if (period !== 'all') {
+                    if (from) qs.set('dateFrom', from)
+                    if (to && to !== '9999-12-31') qs.set('dateTo', to)
+                  }
+                  return (
+                    <Link key={g.key} to={`/calendar?${qs.toString()}`} className="time-stat-row" title="이 시간대의 탑승 기록 검색">
+                      <strong>{g.key}</strong>
+                      <span className="time-rate">
+                        <span className="time-rate-track"><span style={{ width: `${pct ?? 0}%` }} /></span>
+                        <span>{pct === null ? '—' : `${Math.round(pct)}%`}</span>
+                      </span>
+                      <span>{g.toSeat.avg === null ? '—' : formatDuration(Math.round(g.toSeat.avg))}</span>
+                      <span>{g.seat.immediate.num}/{g.seat.immediate.den}{g.seat.immediate.den > 0 && g.seat.immediate.den < MIN_SAMPLE ? ' · 표본 적음' : ''}</span>
+                    </Link>
+                  )
+                })}
+              </div>
+            )}
+            <p className="hint">시간대를 누르면 그 시간에 탑승한 실제 기록을 검색합니다. 과거 착석률은 미래 착석을 보장하지 않습니다.</p>
           </Section>
 
           <Section title="노선별 이용">
