@@ -220,7 +220,7 @@ test.describe('좌석 기록 완결 확인(seatLogComplete)과 통계 재계산'
     await expect(page.getByRole('group', { name: '좌석 변화 기록이 완결되었나요?' })).toHaveCount(0)
     await setTime(page.getByRole('group', { name: '중간 착석 기록' }), '착석한 시각', '17:31')
     await page.getByRole('button', { name: '저장', exact: true }).click()
-    await expect(page.getByRole('heading', { name: /\\d+월 \\d+일/ }).first()).toBeVisible()
+    await expect(page.getByRole('heading', { name: /\d+월 \d+일/ }).first()).toBeVisible()
     expect((await readDb<TripRow>(page, 'trips'))[0].seatLogComplete).toBeNull()
     await gotoApp(page, 'stats')
     await expect(page.locator('.metric', { hasText: '최종 착석률' })).toContainText('(1/1)')
