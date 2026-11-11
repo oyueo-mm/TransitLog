@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronUp, TriangleAlert } from 'lucide-react'
+import { ChevronDown, ChevronUp, Clock3, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { sampleNote, seatCoverage, MIN_SAMPLE } from '../domain/coverage'
 import {
   EMPTY_FILTERS,
   activeFilterCount,
   groupByDate,
+  groupByBoardTime,
   normalizeFilters,
   search,
   sortMatches,
@@ -19,12 +19,12 @@ import {
   type SeatFinal,
   type SeatInitial,
   type SortKey,
+  type TimeStep,
 } from '../domain/search'
-import { averageDuration, averageMinutesToFirstSeat, crowdingDistribution, rideRows, seatRatios } from '../domain/stats'
-import { formatDuration, parseDate, todayStr, WEEKDAY_NAMES } from '../domain/time'
+import { formatDuration, formatHm, parseDate, parseHm, todayStr, WEEKDAY_NAMES } from '../domain/time'
 import { CROWDING_LABEL, KIND_LABEL, MODE_LABEL, PURPOSE_LABEL, SIDE_LABEL, type Crowding, type Mode, type Purpose, type RecordKind, type SeatEvent, type Side, type Trip } from '../domain/types'
-import { Chip, Empty, TripCard } from './common'
-import { Bars, SeatMetric } from './statBits'
+import { Chip, Empty } from './common'
+import { formatTrainRoute } from '../domain/stations'
 import { TagPicker } from './TagPicker'
 
 const PAGE = 30
@@ -36,6 +36,9 @@ interface Saved {
   shown: number
   open: boolean
   scrollY: number
+  group: 'date' | 'time'
+  step: TimeStep
+  center: string
 }
 
 function load(): Saved {
@@ -44,16 +47,19 @@ function load(): Saved {
     if (raw) {
       return {
         filters: normalizeFilters(raw.filters),
-        sort: (['newest', 'oldest', 'durationDesc', 'durationAsc'] as SortKey[]).includes(raw.sort as SortKey) ? (raw.sort as SortKey) : 'newest',
+        sort: (['newest', 'oldest', 'timeAsc', 'timeDesc', 'durationDesc', 'durationAsc'] as SortKey[]).includes(raw.sort as SortKey) ? (raw.sort as SortKey) : 'newest',
         shown: typeof raw.shown === 'number' && raw.shown >= PAGE ? raw.shown : PAGE,
         open: !!raw.open,
         scrollY: typeof raw.scrollY === 'number' ? raw.scrollY : 0,
+        group: raw.group === 'time' ? 'time' : 'date',
+        step: ([5, 10, 15, 30, 60] as number[]).includes(raw.step as number) ? raw.step as TimeStep : 15,
+        center: typeof raw.center === 'string' && parseHm(raw.center) !== null ? raw.center : '08:00',
       }
     }
   } catch {
     /* 저장소를 쓸 수 없으면 기본값으로 시작 */
   }
-  return { filters: EMPTY_FILTERS, sort: 'newest', shown: PAGE, open: false, scrollY: 0 }
+  return { filters: EMPTY_FILTERS, sort: 'newest', shown: PAGE, open: false, scrollY: 0, group: 'date', step: 15, center: '08:00' }
 }
 
 function save(s: Saved) {
@@ -120,12 +126,46 @@ function Highlight({ m }: { m: SearchMatch }) {
   )
 }
 
+function SearchResultCard({ m }: { m: SearchMatch }) {
+  const t = m.rec.trip
+  const seat = m.rec.facts.summary
+  const seatLabel = t.kind !== 'ride' ? KIND_LABEL[t.kind] :
+    t.initialSeat === 'seated' ? '처음부터 착석' :
+    t.initialSeat === 'standing' && seat.minutesToFirstSeat !== null ? `서서 탑승 → ${formatDuration(seat.minutesToFirstSeat)} 후 착석` :
+    seat.everSeated === true ? '중간 착석 기록' :
+    seat.everSeated === false ? '끝까지 서서 이동' :
+    t.initialSeat === 'standing' ? '서서 탑승 · 이후 미확인' : '좌석 미기록'
+  const position = [t.car !== null ? `${t.car}칸` : null, t.door !== null ? `${t.door}문` : null].filter(Boolean).join(' · ')
+  return (
+    <Link className="card search-card" to={`/trip/${t.id}`} state={{ from: '/calendar' }}>
+      <div className="search-card-head">
+        <strong className="search-card-time">{t.boardTime ?? '--:--'}</strong>
+        <span className="muted small">{t.date}</span>
+        {m.rec.duration !== null && <span className="search-card-duration">{formatDuration(m.rec.duration)}</span>}
+      </div>
+      <div className="search-card-route">
+        <span className="badge mode">{t.line ?? (t.mode === 'subway' ? '지하철' : '버스')}</span>
+        <strong>{t.boardPlace ?? '승차역 미기록'} → {t.alightPlace ?? '하차역 미기록'}</strong>
+      </div>
+      {formatTrainRoute(t.trainOrigin, t.trainDestination) && <div className="muted small">{formatTrainRoute(t.trainOrigin, t.trainDestination)}</div>}
+      <div className="search-card-seat">{seatLabel}</div>
+      {(position || t.purpose || t.crowding) && <div className="muted small">{[position, t.purpose ? PURPOSE_LABEL[t.purpose] : null, t.crowding ? CROWDING_LABEL[t.crowding] : null].filter(Boolean).join(' · ')}</div>}
+      {(t.incident || (t.delayMinutes ?? 0) > 0) && <div className="card-sub warn">{[t.incident, t.delayMinutes ? `${t.delayMinutes}분 지연` : ''].filter(Boolean).join(' · ')}</div>}
+      {t.note && <div className="card-note search-card-note">{t.note}</div>}
+      <Highlight m={m} />
+    </Link>
+  )
+}
+
 export function SearchPanel({ trips, events }: { trips: Trip[]; events: SeatEvent[] }) {
   const [init] = useState(load)
   const [filters, setFilters] = useState<SearchFilters>(init.filters)
   const [sort, setSort] = useState<SortKey>(init.sort)
   const [shown, setShown] = useState(init.shown)
   const [open, setOpen] = useState(init.open)
+  const [group, setGroup] = useState(init.group)
+  const [step, setStep] = useState<TimeStep>(init.step)
+  const [center, setCenter] = useState(init.center)
   const scrollRef = useRef(init.scrollY)
   const restored = useRef(false)
 
@@ -136,15 +176,15 @@ export function SearchPanel({ trips, events }: { trips: Trip[]; events: SeatEven
 
   // 상태와 스크롤 위치를 보관해 상세 화면에서 돌아와도 그대로 보이게 한다
   useEffect(() => {
-    save({ filters, sort, shown, open, scrollY: scrollRef.current })
-  }, [filters, sort, shown, open])
+    save({ filters, sort, shown, open, scrollY: scrollRef.current, group, step, center })
+  }, [filters, sort, shown, open, group, step, center])
   useEffect(() => {
     let t: number | undefined
     const onScroll = () => {
       window.clearTimeout(t)
       t = window.setTimeout(() => {
         scrollRef.current = window.scrollY
-        save({ filters, sort, shown, open, scrollY: window.scrollY })
+        save({ filters, sort, shown, open, scrollY: window.scrollY, group, step, center })
       }, 120)
     }
     window.addEventListener('scroll', onScroll, { passive: true })
@@ -152,13 +192,13 @@ export function SearchPanel({ trips, events }: { trips: Trip[]; events: SeatEven
       window.removeEventListener('scroll', onScroll)
       window.clearTimeout(t)
     }
-  }, [filters, sort, shown, open])
+  }, [filters, sort, shown, open, group, step, center])
 
   const today = todayStr()
   const records = useMemo(() => toRecords(trips, events), [trips, events])
   const matches = useMemo(() => sortMatches(search(records, filters, today), sort), [records, filters, sort, today])
   const visible = matches.slice(0, shown)
-  const grouped = useMemo(() => groupByDate(visible), [visible])
+  const grouped = useMemo(() => group === 'time' ? groupByBoardTime(visible, step) : groupByDate(visible), [visible, group, step])
 
   // 처음 한 번, 보관한 스크롤 위치로 복원
   useEffect(() => {
@@ -183,11 +223,6 @@ export function SearchPanel({ trips, events }: { trips: Trip[]; events: SeatEven
     [trips],
   )
 
-  const stat = useMemo(() => {
-    const rows = rideRows(matches.map((m) => m.rec.trip), events)
-    return { rows, seat: seatRatios(rows), cov: seatCoverage(rows), dur: averageDuration(rows), toSeat: averageMinutesToFirstSeat(rows), crowd: crowdingDistribution(rows), nonRide: matches.length - rows.length }
-  }, [matches, events])
-
   const count = activeFilterCount(filters)
   const reset = () => {
     setFilters(EMPTY_FILTERS)
@@ -202,6 +237,19 @@ export function SearchPanel({ trips, events }: { trips: Trip[]; events: SeatEven
     ['custom', '직접 지정'],
   ]
   const noDur = matches.filter((m) => m.rec.duration === null).length
+  const applyTimeWindow = (minutes: number) => {
+    const centerMinutes = parseHm(center)
+    if (centerMinutes === null) return
+    set({ boardFrom: formatHm(centerMinutes - minutes), boardTo: formatHm(centerMinutes + minutes) })
+  }
+  const timeActive = filters.boardFrom !== null || filters.boardTo !== null
+  const activeLabels = [
+    ...filters.lines.map((v) => ({ label: v, clear: () => set({ lines: filters.lines.filter((x) => x !== v) }) })),
+    ...filters.boardStations.map((v) => ({ label: `승차 ${v}`, clear: () => set({ boardStations: filters.boardStations.filter((x) => x !== v) }) })),
+    ...filters.destinations.map((v) => ({ label: `행선지 ${v}`, clear: () => set({ destinations: filters.destinations.filter((x) => x !== v) }) })),
+    ...filters.seatInitial.map((v) => ({ label: v === 'standing' ? '서서 탑승' : v === 'seated' ? '처음부터 착석' : '좌석 미기록', clear: () => set({ seatInitial: filters.seatInitial.filter((x) => x !== v) }) })),
+    ...(timeActive ? [{ label: `승차 ${filters.boardFrom ?? '00:00'}~${filters.boardTo ?? '23:59'}`, clear: () => set({ boardFrom: null, boardTo: null }) }] : []),
+  ]
 
   return (
     <div data-testid="search-panel">
