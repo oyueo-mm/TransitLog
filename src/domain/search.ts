@@ -26,7 +26,7 @@ import {
  *  - 좌석 이벤트(seatEvents)도 검색 대상이다.
  */
 
-export type QuickRange = 'all' | 'today' | 'week' | 'month' | 'custom'
+export type QuickRange = 'all' | 'today' | 'week' | 'month' | '30' | '90' | 'custom'
 export type SeatInitial = 'seated' | 'standing' | 'unrecorded'
 /** 탑승 중 좌석 변화: 중간 착석함 / 끝까지 서 있었음(확인) / 끝까지 앉아 있었음(확인) / 변화 기록 없음·완결 미확인 */
 export type SeatChange = 'midSeat' | 'stoodAll' | 'seatedAll' | 'unconfirmed'
@@ -112,7 +112,7 @@ export function normalizeFilters(raw: unknown): SearchFilters {
       ;(out as unknown as Record<string, unknown>)[key] = v ?? null
     }
   }
-  if (!['all', 'today', 'week', 'month', 'custom'].includes(out.quick)) out.quick = 'all'
+  if (!['all', 'today', 'week', 'month', '30', '90', 'custom'].includes(out.quick)) out.quick = 'all'
   return out
 }
 
@@ -133,6 +133,7 @@ export function activeFilterCount(f: SearchFilters): number {
 
 export function resolveDateRange(f: SearchFilters, today: string): { from: string | null; to: string | null } {
   if (f.quick === 'today') return { from: today, to: today }
+  if (f.quick === '30' || f.quick === '90') return { from: addDays(today, 1 - Number(f.quick)), to: today }
   if (f.quick === 'week') {
     const s = weekStart(today)
     return { from: s, to: addDays(s, 6) }
@@ -490,7 +491,7 @@ export function groupByDate(ms: SearchMatch[]): Array<[string, SearchMatch[]]> {
 export type TimeStep = 5 | 10 | 15 | 30 | 60
 
 /** 시각 미기록은 별도 그룹으로 두며, 날짜가 달라도 같은 탑승 시간대를 묶는다. */
-export function groupByBoardTime(ms: SearchMatch[], step: TimeStep): Array<[string, SearchMatch[]]> {
+export function groupByBoardTime(ms: SearchMatch[], step: TimeStep, descending = false): Array<[string, SearchMatch[]]> {
   const grouped = new Map<number, SearchMatch[]>()
   for (const m of ms) {
     const minute = parseHm(m.rec.trip.boardTime)
@@ -504,7 +505,7 @@ export function groupByBoardTime(ms: SearchMatch[], step: TimeStep): Array<[stri
     const hm = (v: number) => `${String(Math.floor(v / 60)).padStart(2, '0')}:${String(v % 60).padStart(2, '0')}`
     return `${hm(minute)}~${hm(Math.min(1439, minute + step - 1))}`
   }
-  return [...grouped.entries()].sort((a, b) => (a[0] < 0 ? 1 : b[0] < 0 ? -1 : a[0] - b[0])).map(([key, list]) => [label(key), list])
+  return [...grouped.entries()].sort((a, b) => (a[0] < 0 ? 1 : b[0] < 0 ? -1 : descending ? b[0] - a[0] : a[0] - b[0])).map(([key, list]) => [label(key), list])
 }
 
 /** 자동 완성 후보: 저장된 값만, 많이 쓴 순 (같은 역의 표기 차이는 가장 많이 쓴 표기로 합침) */
