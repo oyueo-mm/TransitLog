@@ -206,33 +206,24 @@ test.describe('탑승 중 좌석 변화 수정·삭제·실행 취소', () => {
 })
 
 test.describe('좌석 기록 완결 확인(seatLogComplete)과 통계 재계산', () => {
-  test('이벤트를 고치면 이전의 완결 확인이 해제되어 부정확하게 남지 않는다', async ({ page }) => {
+  test('하차 완료 시 확인 질문 없이 완결되고 이후 수정 시에도 재계산된다', async ({ page }) => {
     await startOngoing(page, '17:23')
     await page.getByRole('button', { name: '앉았다' }).click()
     await page.getByRole('button', { name: '하차', exact: true }).click()
-    await page.getByRole('group', { name: '탑승 중 좌석 변화를 모두 기록했나요?' }).getByRole('button', { name: '예, 더 없음' }).click()
+    await expect(page.getByRole('group', { name: '탑승 중 좌석 변화를 모두 기록했나요?' })).toHaveCount(0)
     await page.getByRole('button', { name: '하차 완료' }).click()
     await expect(page.getByRole('heading', { name: '빠른 기록' })).toBeVisible()
     const [trip] = await readDb<TripRow>(page, 'trips')
     expect(trip.seatLogComplete).toBe(true)
 
-    // 수정 화면에서 중간 착석 시각을 바꾸고 저장 → 완결 확인이 해제된다
     await gotoApp(page, `trip/${trip.id}`)
-    const yes = page.getByRole('group', { name: '좌석 변화 기록이 완결되었나요?' }).getByRole('button', { name: '예, 더 없음' })
-    await expect(yes).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByRole('group', { name: '좌석 변화 기록이 완결되었나요?' })).toHaveCount(0)
     await setTime(page.getByRole('group', { name: '중간 착석 기록' }), '착석한 시각', '17:31')
-    await expect(yes).toHaveAttribute('aria-pressed', 'false') // 화면에서 즉시 해제
     await page.getByRole('button', { name: '저장', exact: true }).click()
-    await expect(page.getByRole('heading', { name: /\d+월 \d+일/ }).first()).toBeVisible()
+    await expect(page.getByRole('heading', { name: /\\d+월 \\d+일/ }).first()).toBeVisible()
     expect((await readDb<TripRow>(page, 'trips'))[0].seatLogComplete).toBeNull()
-
-    // 다시 확인하면 저장되고, 역·비고만 고쳐서는 유지된다
-    await gotoApp(page, `trip/${trip.id}`)
-    await page.getByRole('group', { name: '좌석 변화 기록이 완결되었나요?' }).getByRole('button', { name: '예, 더 없음' }).click()
-    await page.getByRole('group', { name: '중간 착석 기록' }).getByLabel('비고 (선택)').fill('메모만 수정')
-    await page.getByRole('button', { name: '저장', exact: true }).click()
-    await expect(page.getByRole('heading', { name: /\d+월 \d+일/ }).first()).toBeVisible()
-    expect((await readDb<TripRow>(page, 'trips'))[0].seatLogComplete).toBe(true)
+    await gotoApp(page, 'stats')
+    await expect(page.locator('.metric', { hasText: '최종 착석률' })).toContainText('(1/1)')
   })
 
   test('이벤트 수정·삭제 후 통계가 즉시 다시 계산되고, 판정 불가 기록은 서서/앉아서로 추정되지 않는다', async ({ page }) => {
@@ -254,7 +245,7 @@ test.describe('좌석 기록 완결 확인(seatLogComplete)과 통계 재계산'
     expect(sizes.caution).toBeGreaterThan(sizes.value)
     expect(sizes.order.indexOf('caution strong')).toBeLessThan(sizes.order.findIndex((c) => c.startsWith('value')))
 
-    // 시각 수정 → 평균 시간 갱신 (완결 확인은 해제되어 서서 이동 시간 등은 미확인)
+    // 시각 수정 → 평균과 최종 착석 상태를 바로 다시 계산한다
     await gotoApp(page, `trip/${t.id}`)
     await setTime(page.getByRole('group', { name: '중간 착석 기록' }), '착석한 시각', '17:25')
     await page.getByRole('button', { name: '저장', exact: true }).click()
@@ -262,16 +253,16 @@ test.describe('좌석 기록 완결 확인(seatLogComplete)과 통계 재계산'
     await gotoApp(page, 'stats')
     await expect(metric('서서 탄 뒤 착석까지 평균')).toContainText('25분')
     await expect(metric('한 번이라도 착석한 비율')).toContainText('(1/1)') // 앉은 것은 여전히 확인됨
-    await expect(metric('최종 착석률')).toContainText('표본 없음') // 완결 미확인
+    await expect(metric('최종 착석률')).toContainText('(1/1)') // 하차 완료로 자동 완결
 
-    // 착석 이벤트 삭제 → 미확인이므로 한 번이라도 착석 표본에서 빠진다
+    // 착석 이벤트 삭제 → 끝까지 서서 이동한 기록으로 다시 계산된다
     await gotoApp(page, `trip/${t.id}`)
     await page.getByRole('button', { name: '중간 착석 삭제' }).click()
     await page.getByRole('button', { name: '저장', exact: true }).click()
     await expect(page.getByRole('heading', { name: /\d+월 \d+일/ }).first()).toBeVisible()
     await gotoApp(page, 'stats')
-    await expect(metric('한 번이라도 착석한 비율')).toContainText('표본 없음')
-    await expect(metric('한 번이라도 착석한 비율')).toContainText('제외 1건')
+    await expect(metric('한 번이라도 착석한 비율')).toContainText('(0/1)')
+    await expect(metric('최종 착석률')).toContainText('(0/1)')
     await expect(metric('서서 탄 뒤 착석까지 평균')).toContainText('—')
   })
 
