@@ -18,7 +18,7 @@ import { canonicalName, destLabel, formatTrainRoute, sameStation } from '../doma
 import { knownStations, suggestSeatPlaces, suggestStations } from '../domain/suggest'
 import { diffMinutes, formatDuration, nowHm } from '../domain/time'
 import { CROWDING_LABEL, type SeatEvent, type SeatState, type Trip } from '../domain/types'
-import { Chip, ChipGroup, Section } from '../ui/common'
+import { Chip, Section } from '../ui/common'
 import { toast, useAllEvents, useAllTrips, useNow } from '../ui/hooks'
 import { TimeInput } from '../ui/TimeInput'
 
@@ -111,7 +111,6 @@ export function OngoingPanel({ trip }: { trip: Trip }) {
   const [alighting, setAlighting] = useState(false)
   const [alightPlace, setAlightPlace] = useState<string | null>(trip.alightPlace)
   const [alightTime, setAlightTime] = useState<string>(nowHm())
-  const [complete, setComplete] = useState<boolean | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [finishing, setFinishing] = useState(false)
   const busy = useRef(false)
@@ -151,7 +150,7 @@ export function OngoingPanel({ trip }: { trip: Trip }) {
 
   const seat = (state: SeatState) =>
     mutate(state === 'seated' ? '착석을 기록했습니다' : '일어섬을 기록했습니다', () => addSeatEvent(trip.id, { time: nowHm(), state, place: null, note: null }))
-  const finish = async (place: string | null, time: string, seatLogComplete?: boolean | null) => {
+  const finish = async (place: string | null, time: string) => {
     if (busy.current) return
     busy.current = true
     setFinishing(true)
@@ -159,7 +158,6 @@ export function OngoingPanel({ trip }: { trip: Trip }) {
       const saved = await endRide(trip.id, {
         alightPlace: place,
         alightTime: time,
-        ...(seatLogComplete != null ? { seatLogComplete } : {}),
       })
       if (saved) {
         setAlighting(false)
@@ -283,20 +281,8 @@ export function OngoingPanel({ trip }: { trip: Trip }) {
             </datalist>
           </div>
           <TimeInput label="하차 시각" value={alightTime} onChange={(t) => t && setAlightTime(t)} clearable={false} nowLabel="지금" />
-          {trip.initialSeat !== null && (
-            <ChipGroup<'yes' | 'no'>
-              label="탑승 중 좌석 변화를 모두 기록했나요?"
-              options={[
-                { value: 'yes', label: '예, 더 없음' },
-                { value: 'no', label: '아니오' },
-              ]}
-              value={complete === null ? null : complete ? 'yes' : 'no'}
-              onChange={(v) => setComplete(v === null ? null : v === 'yes')}
-              hint="‘예’를 고르면 최종 착석 여부와 서서 이동 시간을 계산합니다. 모르면 비워 두세요."
-            />
-          )}
           <div className="grid2">
-            <button className="btn-primary" onClick={() => void finish(canonicalName(alightPlace, known), alightTime, complete)} disabled={finishing}>
+            <button className="btn-primary" onClick={() => void finish(canonicalName(alightPlace, known), alightTime)} disabled={finishing}>
               하차 완료
             </button>
             <button className="btn-secondary" onClick={() => setAlighting(false)} disabled={finishing}>
