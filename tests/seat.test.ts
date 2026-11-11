@@ -13,6 +13,11 @@ describe('좌석 변화 계산', () => {
     expect(s.standingMinutes).toBe(6)
   })
 
+  it('하차 후에 기록된 착석 이벤트는 착석까지 소요 시간에서 제외한다', () => {
+    const t = mkTrip({ initialSeat: 'standing', boardTime: '08:00', alightTime: '08:30' })
+    const result = summarizeSeat(t, [mkEvent(t.id, { time: '08:45', state: 'seated' })])
+    expect(result.minutesToFirstSeat).toBeNull()
+  })
   it('앉았다 일어선 경우 서서 이동한 시간은 서 있던 구간의 합', () => {
     const t = mkTrip({ initialSeat: 'seated', boardTime: '10:00', alightTime: '10:40', seatLogComplete: true })
     const s = summarizeSeat(t, [
