@@ -30,46 +30,63 @@ export function format12(v: string | null): string {
 const HOURS = Array.from({ length: 12 }, (_, i) => String(i + 1))
 const MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'))
 
-/** Native touch momentum and scroll snapping; commit only when the wheel settles. */
-function TimeWheel({ label, values, value, onChange }: { label: string; values: string[]; value: string; onChange: (v: string) => void }) {
+/** 스크롤 순서는 1…12→1, 00…59→00. 가운데 사본만 접근성 목록에 노출한다. */
+function TimeWheel({ label, values, value, onChange, loop = false }: { label: string; values: string[]; value: string; onChange: (v: string) => void; loop?: boolean }) {
   const ref = useRef<HTMLDivElement>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const interacting = useRef(false)
   const id = useId()
-  const index = Math.max(0, values.indexOf(value))
-  const latest = useRef({ values, value, onChange })
-  useEffect(() => { latest.current = { values, value, onChange } }, [values, value, onChange])
+  const list = loop ? values.filter((v) => v !== '') : values
+  const n = list.length
+  const items = loop ? [...list, ...list, ...list] : list
+  const index = Math.max(0, list.indexOf(value))
+  const latest = useRef({ list, value, onChange })
+  useEffect(() => { latest.current = { list, value, onChange } }, [list, value, onChange])
   useEffect(() => {
     clearTimeout(timer.current)
-    ref.current?.scrollTo({ top: index * 44, behavior: 'instant' })
-  }, [index])
+    interacting.current = false
+    ref.current?.scrollTo({ top: (loop ? n + index : index) * 44, behavior: 'instant' })
+  }, [index, n, loop])
   useEffect(() => () => clearTimeout(timer.current), [])
   const choose = (i: number) => {
-    const next = Math.max(0, Math.min(values.length - 1, i))
+    if (n === 0) return
+    const next = loop ? ((i % n) + n) % n : Math.max(0, Math.min(n - 1, i))
     clearTimeout(timer.current)
-    ref.current?.scrollTo({ top: next * 44, behavior: 'instant' })
-    onChange(values[next])
+    interacting.current = false
+    ref.current?.scrollTo({ top: (loop ? n + next : next) * 44, behavior: 'instant' })
+    onChange(list[next])
   }
   return (
     <div className="ti-wheel-wrap">
-      <div ref={ref} className="ti-wheel" role="listbox" aria-label={label} tabIndex={0} aria-activedescendant={`${id}-${index}`}
+      <div ref={ref} className="ti-wheel" role="listbox" aria-label={label} tabIndex={0} aria-activedescendant={value ? `${id}-${index}` : undefined}
+        onWheel={() => { interacting.current = true }}
+        onTouchStart={() => { interacting.current = true }}
+        onPointerDown={() => { interacting.current = true }}
         onKeyDown={(e) => {
-          const next = e.key === 'ArrowDown' ? index + 1 : e.key === 'ArrowUp' ? index - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? values.length - 1 : null
+          const next = e.key === 'ArrowDown' ? index + 1 : e.key === 'ArrowUp' ? index - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? n - 1 : null
           if (next !== null) { e.preventDefault(); choose(next) }
         }}
         onScroll={() => {
+          if (!interacting.current || n === 0) return
           clearTimeout(timer.current)
           timer.current = setTimeout(() => {
-            const cur = latest.current
-            const i = Math.max(0, Math.min(cur.values.length - 1, Math.round((ref.current?.scrollTop ?? 0) / 44)))
-            if (cur.values[i] !== cur.value) cur.onChange(cur.values[i])
+            const current = latest.current
+            const raw = Math.round((ref.current?.scrollTop ?? 0) / 44)
+            const picked = loop ? ((raw % n) + n) % n : Math.max(0, Math.min(n - 1, raw))
+            interacting.current = false
+            if (loop) ref.current?.scrollTo({ top: (n + picked) * 44, behavior: 'instant' })
+            if (current.list[picked] !== current.value) current.onChange(current.list[picked])
           }, 160)
         }}>
-        {values.map((v, i) => <div id={`${id}-${i}`} key={v} role="option" aria-selected={v === value} className={`ti-option ${v === value ? 'is-selected' : ''}`} onClick={() => choose(i)}>{v || '—'}</div>)}
+        {items.map((v, i) => {
+          const optionIndex = loop ? i % n : i
+          const accessible = !loop || (i >= n && i < n * 2)
+          return <div id={accessible ? `${id}-${optionIndex}` : undefined} key={`${i}-${v}`} role={accessible ? 'option' : 'presentation'} aria-hidden={!accessible || undefined} aria-selected={accessible ? v === value : undefined} className={`ti-option ${v === value ? 'is-selected' : ''}`} onClick={() => choose(optionIndex)}>{v || '—'}</div>
+        })}
       </div>
     </div>
   )
 }
-
 export interface TimeInputProps {
   label: string
   value: string | null
@@ -106,8 +123,8 @@ export function TimeInput({ label, value, onChange, nowLabel, clearable = true, 
       )}
       <div className="ti-wheels">
         <TimeWheel label={`${label} 오전/오후`} values={['오전', '오후']} value={cur.ap} onChange={(ap) => emit({ ...cur, ap: ap as Ap })} />
-        <TimeWheel label={`${label} 시`} values={['', ...HOURS]} value={cur.h} onChange={(h) => emit({ ...cur, h })} />
-        <TimeWheel label={`${label} 분`} values={['', ...MINUTES]} value={cur.m} onChange={(m) => emit({ ...cur, m })} />
+        <TimeWheel label={`${label} 시`} values={HOURS} value={cur.h} loop onChange={(h) => emit({ ...cur, h })} />
+        <TimeWheel label={`${label} 분`} values={MINUTES} value={cur.m} loop onChange={(m) => emit({ ...cur, m })} />
       </div>
       <div className="ti-foot">
         <output className="ti-out" aria-live="polite">

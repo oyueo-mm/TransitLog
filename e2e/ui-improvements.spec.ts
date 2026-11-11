@@ -13,7 +13,8 @@ test('하루 기록은 접혀 시작하고 휠 편집·완료·새로고침 후 
   await minutes.focus()
   await minutes.press('ArrowDown')
   await expect(minutes.getByRole('option', { selected: true })).toHaveText('59')
-  await minutes.evaluate(el => { el.scrollTop = 59 * 44 }) // blank + 00..58
+  await minutes.hover()
+  await page.mouse.wheel(0, -44) // 실제 스크롤: 순환 휠에서 59 → 58
   await expect(minutes.getByRole('option', { selected: true })).toHaveText('58')
   await expectLayoutOk(page, '펼친 시간 휠')
   await page.screenshot({ path: 'test-results/screens/time-wheel-mobile.png', fullPage: true })

@@ -105,11 +105,12 @@ export function normalizeFilters(raw: unknown): SearchFilters {
   const out: SearchFilters = { ...EMPTY_FILTERS }
   if (!raw || typeof raw !== 'object') return out
   const r = raw as Record<string, unknown>
+  const multiple = new Set<keyof SearchFilters>(['weekdays', 'seatOutcome', 'lines', 'boardStations', 'alightStations'])
   for (const key of Object.keys(EMPTY_FILTERS) as Array<keyof SearchFilters>) {
     const def = EMPTY_FILTERS[key]
     const v = r[key]
     if (Array.isArray(def)) {
-      if (Array.isArray(v)) (out as unknown as Record<string, unknown>)[key] = v.filter((x) => typeof x === 'string' || typeof x === 'number')
+      if (Array.isArray(v)) { const filtered = v.filter((x) => typeof x === 'string' || typeof x === 'number'); (out as unknown as Record<string, unknown>)[key] = multiple.has(key) ? filtered : filtered.slice(0, 1) }
     } else if (typeof def === 'string') {
       if (typeof v === 'string') (out as unknown as Record<string, unknown>)[key] = v
     } else if (v === null || typeof v === 'string' || typeof v === 'number') {
@@ -117,6 +118,8 @@ export function normalizeFilters(raw: unknown): SearchFilters {
     }
   }
   if (!['all', 'today', 'week', 'month', '30', '90', 'custom'].includes(out.quick)) out.quick = 'all'
+  // 더 이상 표시하지 않는 행선지 필터가 과거 세션에서 조용히 검색 결과를 가리지 않도록 제거한다.
+  out.destinations = []
   return out
 }
 
