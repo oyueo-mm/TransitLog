@@ -1608,3 +1608,7 @@ a.btn-text {
   .search-time-range { grid-template-columns: minmax(0,1fr); gap: 8px; }
   .time-center-row > .collapsed-time { max-width: none; }
 }
+
+.search-condition-actions { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; min-width: 0; }
+.search-condition-actions > button { flex: 0 1 auto; white-space: normal; }
+@media (max-width: 480px) { .search-condition-actions { justify-content: flex-start; } }
