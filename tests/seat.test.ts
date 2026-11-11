@@ -45,7 +45,7 @@ describe('좌석 변화 계산', () => {
   })
 
   it('하차가 아직 확인되지 않은 서서 탑승은 끝까지 서서 갔다고 보지 않는다', () => {
-    const t = mkTrip({ initialSeat: 'standing', boardTime: '08:00', alightTime: null })
+    const t = mkTrip({ initialSeat: 'standing', boardTime: '08:00', alightTime: null, ongoing: true })
     const s = summarizeSeat(t, [])
     expect(s.immediate).toBe(false)
     expect(s.everSeated).toBeNull()
@@ -63,6 +63,14 @@ describe('좌석 변화 계산', () => {
     const ongoing = mkTrip({ ongoing: true, initialSeat: 'standing', alightTime: '08:30' })
     expect(isSeatLogComplete(ongoing)).toBe(false)
     expect(summarizeSeat(ongoing, []).everSeated).toBeNull()
+  })
+
+  it('하차 시각이 없는 종료 기록도 마지막 좌석 상태를 유지한다', () => {
+    const t = mkTrip({ initialSeat: 'standing', boardTime: '21:54', alightTime: null, ongoing: false, seatLogComplete: null, reportedDurationMin: 35 })
+    expect(isSeatLogComplete(t)).toBe(true)
+    expect(summarizeSeat(t, [])).toMatchObject({ immediate: false, everSeated: false, final: 'standing', standingMinutes: null })
+    const sitting = mkTrip({ initialSeat: 'seated', ongoing: false, alightTime: null, seatLogComplete: false })
+    expect(summarizeSeat(sitting, [])).toMatchObject({ everSeated: true, final: 'seated' })
   })
 
   it('변화 없음이 확인되면 끝까지 서서 감', () => {
@@ -85,7 +93,7 @@ describe('좌석 변화 계산', () => {
   })
 
   it('아직 하차하지 않았다면 좌석 이벤트가 있어도 최종 상태는 미확인', () => {
-    const t = mkTrip({ initialSeat: 'standing', boardTime: '08:00', alightTime: null })
+    const t = mkTrip({ initialSeat: 'standing', boardTime: '08:00', alightTime: null, ongoing: true })
     const s = summarizeSeat(t, [mkEvent(t.id, { time: '08:10' })])
     expect(s.everSeated).toBe(true)
     expect(s.final).toBeNull()
