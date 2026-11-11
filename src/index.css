@@ -1662,3 +1662,15 @@ a.btn-text {
   .seat-status-detail { font-size: .66rem; }
   .card-line { font-size: .94rem; }
 }
+
+/* 실제 승·하차 시각과 기록된 소요 시간을 별도 표시 */
+.ride-times { display: flex; align-items: baseline; flex-wrap: wrap; gap: 3px 7px; min-width: 0; font-size: .85rem; font-variant-numeric: tabular-nums; line-height: 1.5; }
+.ride-times-part { color: var(--muted); white-space: nowrap; }
+.ride-times-part strong { color: var(--text); font-weight: 700; }
+.ride-times-part strong.live { color: var(--live); }
+.ride-times-date { flex: 1 1 100%; color: var(--muted); font-size: .78rem; }
+.ride-times-arrow { color: var(--muted); }
+.ride-times-duration { color: var(--muted); }
+.ride-times-reported { color: var(--muted); font-size: .77rem; }
+.search-card .ride-times { margin-top: 0; }
+@media (max-width: 380px) { .ride-times { font-size: .82rem; gap: 3px 5px; } .ride-times-reported { font-size: .72rem; } }
