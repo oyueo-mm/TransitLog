@@ -5,7 +5,7 @@ import type { SeatEvent, Trip } from './types'
 export type SeatCardTone = 'seated' | 'mid' | 'standing' | 'unknown'
 export interface SeatCardInfo { label: string; tone: SeatCardTone; detail: string | null }
 
-/** 카드에서는 관찰 사실만 강조하고, 기록되지 않은 착석 여부는 추정하지 않는다. */
+/** 종료된 탑승에서는 기록된 마지막 좌석 상태가 하차까지 유지된 것으로 표시한다. */
 export function seatCardInfo(trip: Trip, events: SeatEvent[], summary: SeatSummary = summarizeSeat(trip, events)): SeatCardInfo | null {
   if (trip.kind !== 'ride') return null
   if (trip.ongoing) {
@@ -14,12 +14,13 @@ export function seatCardInfo(trip: Trip, events: SeatEvent[], summary: SeatSumma
     if (current === 'standing') return { label: '현재 서 있음', tone: 'standing', detail: null }
     return { label: '좌석 미기록', tone: 'unknown', detail: null }
   }
-  if (trip.initialSeat === 'seated') return { label: '처음부터 착석', tone: 'seated', detail: null }
+  if (trip.initialSeat === 'seated') return events.some((e) => e.state === 'standing')
+    ? { label: '중간 기립', tone: 'standing', detail: null }
+    : { label: '처음부터 착석', tone: 'seated', detail: null }
   if (trip.initialSeat === 'standing') {
     if (summary.minutesToFirstSeat !== null) return { label: `${summary.minutesToFirstSeat}분 후 착석`, tone: 'mid', detail: '중간 착석' }
     if (events.some((e) => e.state === 'seated')) return { label: '중간 착석', tone: 'mid', detail: '착석 소요 시간 미확인' }
-    if (summary.everSeated === false) return { label: '끝까지 서서 이동', tone: 'standing', detail: null }
-    return { label: '서서 탑승 · 이후 미확인', tone: 'unknown', detail: null }
+    return { label: '끝까지 서서 이동', tone: 'standing', detail: null }
   }
   if (summary.everSeated === true) return { label: '착석 기록 있음', tone: 'mid', detail: '탑승 시 좌석 미기록' }
   return { label: '좌석 미기록', tone: 'unknown', detail: null }
