@@ -1,4 +1,4 @@
-import { orderEvents } from './seat'
+import { isSeatLogComplete, orderEvents } from './seat'
 import { currentSeat } from './seatLog'
 import { diffMinutes, formatDuration, parseHm } from './time'
 import type { SeatEvent, SeatState, Trip } from './types'
@@ -92,12 +92,12 @@ function tickLabel(e: SeatEvent): string {
  * 한 탑승의 좌석 상태를 시간 구간으로 나눈다.
  *  - 탑승 시 좌석(initialSeat)은 승차 시각부터 첫 좌석 변화까지 유지된다 (탑승 시 좌석이 없으면 그 구간은 미확인).
  *  - 각 변화는 그 시각부터 다음 변화까지의 상태가 된다. 같은 분의 변화는 길이 0 구간이라 그려지지 않지만 눈금(tick)과 순서는 남는다.
- *  - 마지막 변화 이후는 '좌석 변화 기록 완결'이 확인된 경우에만 그 상태로 본다. 그렇지 않으면 미확인이다.
+ *  - 마지막 변화 이후는 하차가 기록되었거나 좌석 로그가 완결된 경우 그 상태로 본다. 진행 중이면 잠정 구간으로 표시한다.
  *  - 시각이 없는 변화나 탑승 구간 밖의 변화를 만나면 거기서부터는 미확인으로 두고 이유를 notes 에 남긴다.
  *  - 진행 중(provisional)인 탑승은 현재 좌석 상태가 현재 시각까지 이어지는 잠정 구간으로 표시한다.
  */
 export function seatSegments(
-  trip: Pick<Trip, 'boardTime' | 'initialSeat' | 'seatLogComplete'>,
+  trip: Pick<Trip, 'boardTime' | 'initialSeat' | 'seatLogComplete'> & Partial<Pick<Trip, 'kind' | 'ongoing' | 'alightTime'>>,
   ordered: SeatEvent[],
   start: number,
   end: number,
@@ -139,7 +139,7 @@ export function seatSegments(
   if (cursor < end) {
     if (broken) push(cursor, end, 'unknown')
     else if (provisional) push(cursor, end, cur ?? 'unknown', true)
-    else if (trip.seatLogComplete === true) push(cursor, end, cur ?? 'unknown')
+    else if (isSeatLogComplete(trip)) push(cursor, end, cur ?? 'unknown')
     else {
       push(cursor, end, 'unknown')
       if (ordered.length > 0 || trip.initialSeat !== null) notes.push('마지막 좌석 변화 이후 변화가 없다는 확인이 없어 그 구간은 미확인입니다')

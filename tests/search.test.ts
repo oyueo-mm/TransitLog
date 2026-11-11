@@ -134,12 +134,24 @@ describe('조건 필터', () => {
     expect(ids(F({ seatChange: ['midSeat'] }))).toEqual([a.id])
     // c: 서서 탔고 완결 확인 + 앉은 기록 없음 → 끝까지 서 있었음
     expect(ids(F({ seatChange: ['stoodAll'] }))).toEqual([c.id])
-    expect(ids(F({ seatFinal: ['seated'] }))).toEqual([a.id])
+    expect(ids(F({ seatFinal: ['seated'] })).sort()).toEqual([a.id, b.id].sort())
     expect(ids(F({ seatFinal: ['standing'] }))).toEqual([c.id])
-    // 최종 상태 미확인: 완결 확인이 없는 b, d
-    expect(ids(F({ seatFinal: ['unknown'] })).sort()).toEqual([b.id, d.id].sort())
+    // 하차 시각이 없는 d만 최종 상태 미확인
+    expect(ids(F({ seatFinal: ['unknown'] }))).toEqual([d.id])
     // 비탑승은 좌석 조건에 걸리지 않는다
     expect(ids(F({ seatFinal: ['unknown', 'seated', 'standing'] }))).not.toContain(e.id)
+  })
+
+  it('한 번이라도 착석은 처음부터 착석과 중간 착석을 함께 포함하고 조건 내에서는 OR', () => {
+    expect(ids(F({ seatOutcome: ['initial'] }))).toEqual([b.id])
+    expect(ids(F({ seatOutcome: ['mid'] }))).toEqual([a.id])
+    expect(ids(F({ seatOutcome: ['ever'] })).sort()).toEqual([a.id, b.id].sort())
+    expect(ids(F({ seatOutcome: ['stoodAll'] }))).toEqual([c.id])
+    expect(ids(F({ seatOutcome: ['unknown'] }))).toEqual([d.id])
+    expect(ids(F({ seatOutcome: ['mid', 'stoodAll'] })).sort()).toEqual([a.id, c.id].sort())
+    expect(ids(F({ seatOutcome: ['ever'], lines: ['1호선'] }))).toEqual([a.id])
+    expect(ids(F({ seatOutcome: ['initial', 'mid', 'ever', 'stoodAll', 'unknown'] }))).not.toContain(e.id)
+    expect(activeFilterCount(F({ seatOutcome: ['ever'] }))).toBe(1)
   })
 
   it('위치·혼잡·지연', () => {

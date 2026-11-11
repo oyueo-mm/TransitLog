@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dayTotals, summarizeSeat, tripDuration } from '../src/domain/seat'
+import { dayTotals, isSeatLogComplete, summarizeSeat, tripDuration } from '../src/domain/seat'
 import { mkEvent, mkTrip } from './helpers'
 
 describe('좌석 변화 계산', () => {
@@ -44,13 +44,25 @@ describe('좌석 변화 계산', () => {
     expect(s.final).toBeNull()
   })
 
-  it('서서 탑승만 있고 변화 없음 확인이 없으면 끝까지 서서 갔다고 보지 않는다', () => {
-    const t = mkTrip({ initialSeat: 'standing', boardTime: '08:00', alightTime: '08:30' })
+  it('하차가 아직 확인되지 않은 서서 탑승은 끝까지 서서 갔다고 보지 않는다', () => {
+    const t = mkTrip({ initialSeat: 'standing', boardTime: '08:00', alightTime: null })
     const s = summarizeSeat(t, [])
     expect(s.immediate).toBe(false)
     expect(s.everSeated).toBeNull()
     expect(s.final).toBeNull()
     expect(s.standingMinutes).toBeNull()
+  })
+
+  it('과거 기록도 하차 완료 시 자동으로 좌석 로그가 완결된다', () => {
+    const t = mkTrip({ initialSeat: 'standing', boardTime: '08:00', alightTime: '08:30', seatLogComplete: null })
+    const s = summarizeSeat(t, [])
+    expect(isSeatLogComplete(t)).toBe(true)
+    expect(s).toMatchObject({ immediate: false, everSeated: false, final: 'standing', standingMinutes: 30 })
+    const seated = mkTrip({ initialSeat: 'seated', boardTime: '08:00', alightTime: '08:30', seatLogComplete: false })
+    expect(summarizeSeat(seated, []).final).toBe('seated')
+    const ongoing = mkTrip({ ongoing: true, initialSeat: 'standing', alightTime: '08:30' })
+    expect(isSeatLogComplete(ongoing)).toBe(false)
+    expect(summarizeSeat(ongoing, []).everSeated).toBeNull()
   })
 
   it('변화 없음이 확인되면 끝까지 서서 감', () => {
@@ -72,8 +84,8 @@ describe('좌석 변화 계산', () => {
     expect(s.standingMinutes).toBeNull()
   })
 
-  it('좌석 변화가 있어도 기록 완결 확인이 없으면 최종 상태는 미확인', () => {
-    const t = mkTrip({ initialSeat: 'standing', boardTime: '08:00', alightTime: '08:30' })
+  it('아직 하차하지 않았다면 좌석 이벤트가 있어도 최종 상태는 미확인', () => {
+    const t = mkTrip({ initialSeat: 'standing', boardTime: '08:00', alightTime: null })
     const s = summarizeSeat(t, [mkEvent(t.id, { time: '08:10' })])
     expect(s.everSeated).toBe(true)
     expect(s.final).toBeNull()

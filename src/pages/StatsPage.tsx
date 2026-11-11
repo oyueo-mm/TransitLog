@@ -152,12 +152,12 @@ export function StatsPage() {
                     <strong>즉시 착석률</strong>: 탑승할 때 좌석 상태를 기록한 탑승 중 앉아서 탄 비율입니다.
                   </li>
                   <li>
-                    <strong>한 번이라도 착석</strong>: 앉은 것이 확인된 기록과 ‘끝까지 서 있었다’고 확인한 기록만 셉니다. 서서 탄 뒤 이후를 확인하지 않은 기록은 앉았는지 알 수 없어 뺍니다.
+                    <strong>한 번이라도 착석</strong>: 앉았던 기록과 하차 완료 후에도 한 번도 앉지 않은 기록만 셉니다. 하차하지 않은 서서 탑승 기록은 미확인으로 제외합니다.
                   </li>
                   <li>
-                    <strong>최종 착석률</strong>: 좌석 변화 기록을 ‘완결’로 확인한 탑승만 셉니다.
+                    <strong>최종 착석률</strong>: 하차가 완료되었거나 좌석 로그가 별도로 완결된 탑승을 셉니다.
                   </li>
-                  <li>미확인 기록은 ‘서서 감’이나 ‘앉아서 감’으로 처리하지 않습니다. 기록 수정에서 좌석 변화를 확인하면 표본이 늘어납니다.</li>
+                  <li>하차 여부나 좌석 상태가 불명확한 기록은 임의로 서서/앉아서 이동한 것으로 분류하지 않습니다.</li>
                 </ul>
               </details>
             </div>
@@ -175,10 +175,10 @@ export function StatsPage() {
                 num={seat.everSeated.num}
                 den={seat.everSeated.den}
                 total={cov.total}
-                bias="서서 탄 뒤 확인하지 않은 기록이 빠져 실제보다 높게 보일 수 있어요"
-                def="탑승 중 한 번이라도 앉은 비율. 앉은 것이 확인된 기록과 ‘끝까지 서 있었음’을 확인한 기록만 센다"
+                bias="하차하지 않은 서서 탑승 기록이 빠져 실제보다 높게 보일 수 있어요"
+                def="탑승 중 한 번이라도 앉은 비율. 하차 완료 기록은 추가 좌석 확인 없이 판정한다"
                 reasons={[
-                  ['서서 탔지만 이후 앉았는지 확인하지 않음(‘변화 없음’ 미확인)', cov.ever.unconfirmedStanding],
+                  ['서서 탔지만 하차 기록이 없어 이후 상태 미확인', cov.ever.unconfirmedStanding],
                   ['좌석 정보가 없음', cov.ever.unknown],
                 ]}
               />
@@ -187,8 +187,8 @@ export function StatsPage() {
                 num={seat.final.num}
                 den={seat.final.den}
                 total={cov.total}
-                def="하차 직전 앉아 있던 비율 (좌석 변화 기록이 완결로 확인된 탑승만)"
-                reasons={[['좌석 변화 기록 완결을 확인하지 않음', cov.final.unconfirmed]]}
+                def="하차 직전 앉아 있던 비율 (하차 시각 기록 또는 별도 완결 확인 기준)"
+                reasons={[['하차 및 좌석 완결 정보 부족', cov.final.unconfirmed]]}
               />
               <div>
                 <dt>서서 탄 뒤 착석까지 평균</dt>
@@ -198,7 +198,7 @@ export function StatsPage() {
               <div>
                 <dt>서서 이동한 시간 평균</dt>
                 <dd>{standing.avg === null ? '—' : formatDuration(Math.round(standing.avg))} <span className="muted">(표본 {standing.n})</span></dd>
-                <dd className="def">좌석 변화 기록 완결 + 승·하차·변화 시각이 모두 있는 탑승만</dd>
+                <dd className="def">하차 완료 + 승·하차·변화 시각이 모두 있는 탑승만</dd>
               </div>
               <div>
                 <dt>평균 탑승 시간</dt>

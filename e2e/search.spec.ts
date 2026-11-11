@@ -1,6 +1,6 @@
 import { mkdirSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
-import { expectLayoutOk, expectNoSeriousA11y, fakeEvent, fakeTrip, gotoApp, restoreBackup } from './fixtures'
+import { expectLayoutOk, expectNoSeriousA11y, fakeEvent, fakeTrip, gotoApp, restoreBackup, setTime, timeOut } from './fixtures'
 
 const OUT = 'test-results/screens'
 
@@ -63,18 +63,18 @@ test.describe('고급 검색', () => {
     await openSearch(page)
     await advanced(page)
     await page.getByRole('group', { name: '노선·버스 번호', exact: true }).getByRole('button', { name: '1호선' }).click()
-    await page.getByLabel('승차 시각 시작').fill('07:00')
-    await page.getByLabel('승차 시각 끝').fill('09:00')
+    await setTime(page, '승차 시각 시작', '07:00')
+    await setTime(page, '승차 시각 끝', '09:00')
     await page.getByRole('group', { name: '승차역', exact: true }).getByRole('button', { name: /^가가/ }).click()
     await chip(page, '탑승 시 좌석', '서서 탑승').click()
     await chip(page, '탑승 중 좌석 변화', '중간 착석함').click()
     await expect(cards(page)).toHaveCount(1)
     await expect(cards(page).first()).toContainText('가가역 → 나나역')
     // 조건 하나를 바꾸면 결과가 사라진다
-    await page.getByLabel('승차 시각 끝').fill('08:00')
+    await setTime(page, '승차 시각 끝', '08:00')
     await expect(cards(page)).toHaveCount(0)
     // 같은 그룹의 여러 값은 OR
-    await page.getByLabel('승차 시각 끝').fill('09:00')
+    await setTime(page, '승차 시각 끝', '09:00')
     await chip(page, '탑승 시 좌석', '처음부터 앉아서').click()
     await expect(cards(page)).toHaveCount(1)
     await page.getByRole('button', { name: /조건 초기화/ }).click()
@@ -90,7 +90,7 @@ test.describe('고급 검색', () => {
     await expect(cards(page).first()).toContainText('신호 대기')
     await page.getByRole('button', { name: /조건 초기화/ }).click()
     await chip(page, '최종 좌석 상태', '미확인').click()
-    await expect(cards(page)).toHaveCount(2) // 완결 확인이 없는 b, d
+    await expect(cards(page)).toHaveCount(1) // 하차 기록이 없는 d만 미확인
     await page.getByRole('button', { name: /조건 초기화/ }).click()
     await chip(page, '지연', '지연 있음').click()
     await expect(cards(page)).toHaveCount(1)
@@ -112,18 +112,50 @@ test.describe('고급 검색', () => {
     await expect(cards(page).nth(0)).toContainText('바바역')
   })
 
+  test('좌석 상태의 한 번이라도 착석은 처음부터와 중간 착석을 함께 찾는다', async ({ page }) => {
+    await restoreBackup(page, seed())
+    await openSearch(page)
+    const outcome = (label: string) => chip(page, '좌석 상태', label)
+    await outcome('한 번이라도 착석').click()
+    await expect(cards(page)).toHaveCount(2)
+    await expect(cards(page).last()).toContainText('처음부터 착석')
+    await outcome('한 번이라도 착석').click()
+    await outcome('끝까지 서 있었음').click()
+    await expect(cards(page)).toHaveCount(1)
+    await outcome('착석 여부 미확인').click()
+    await expect(cards(page)).toHaveCount(2)
+    await page.getByRole('button', { name: /조건 초기화/ }).click()
+    await expect(cards(page)).toHaveCount(4)
+  })
+
+  test('시각 선택 휠·지금·기준 시각이 검색에 반영되고 작은 화면에서도 잘리지 않는다', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 800 })
+    await page.clock.setFixedTime(new Date('2026-03-02T08:17:00+09:00'))
+    await restoreBackup(page, seed())
+    await openSearch(page)
+    await page.getByRole('button', { name: '승차 시각 시작 지금' }).click()
+    await expect(timeOut(page, '승차 시각 시작')).toHaveText('오전 08:17')
+    await setTime(page, '승차 시각 끝', '09:00')
+    await expect(cards(page)).toHaveCount(1)
+    await setTime(page, '기준 시각', '08:24')
+    await page.getByRole('group', { name: '기준 시각 전후 검색' }).getByRole('button', { name: '±5분' }).click()
+    await expect(cards(page)).toHaveCount(1)
+    await expect(timeOut(page, '승차 시각 시작')).toHaveText('오전 08:19')
+    await expectLayoutOk(page, '검색 시각 선택기 320px')
+  })
+
   test('시간 범위·시간대 그룹·통계에서 기록으로 이동', async ({ page }) => {
     await restoreBackup(page, seed())
     await openSearch(page)
     await expect(page.getByTestId('result-stats')).toHaveCount(0)
-    await page.getByLabel('승차 시각 시작').fill('07:00')
-    await page.getByLabel('승차 시각 끝').fill('09:00')
+    await setTime(page, '승차 시각 시작', '07:00')
+    await setTime(page, '승차 시각 끝', '09:00')
     await expect(cards(page)).toHaveCount(2)
     await page.getByRole('group', { name: '결과 묶음' }).getByRole('button', { name: '시간대별' }).click()
     await page.getByLabel('간격').selectOption('30')
     await expect(page.getByTestId('result-group')).toHaveCount(2)
-    await page.getByLabel('승차 시각 시작').fill('22:00')
-    await page.getByLabel('승차 시각 끝').fill('02:00')
+    await setTime(page, '승차 시각 시작', '22:00')
+    await setTime(page, '승차 시각 끝', '02:00')
     await expect(cards(page)).toHaveCount(0)
     await gotoApp(page, 'stats')
     await expect(page.getByText('시간대별 착석 분석')).toBeVisible()

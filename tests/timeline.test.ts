@@ -253,7 +253,7 @@ describe('좌석 상태 구간 나누기', () => {
   })
 
   it('마지막 변화 이후 완결 확인이 없으면 남은 구간은 미확인', () => {
-    const t = trip({ boardTime: '08:00', alightTime: '08:40', initialSeat: 'standing', seatLogComplete: null })
+    const t = trip({ boardTime: '08:00', alightTime: null, initialSeat: 'standing', seatLogComplete: null })
     const { segments, notes } = seatSegments(t, [mkEvent(t.id, { time: '08:10', state: 'seated' })], 480, 520)
     // 08:10 에 앉았다는 사실(눈금)은 남지만, 그 뒤 변화가 없었는지 모르므로 이후 구간은 미확인
     expect(segments.map((s) => [s.state, s.start, s.end])).toEqual([
@@ -261,6 +261,14 @@ describe('좌석 상태 구간 나누기', () => {
       ['unknown', 490, 520],
     ])
     expect(notes.join(' ')).toContain('확인이 없어')
+  })
+
+  it('하차 기록이 있으면 확인 버튼 없이 마지막 좌석이 하차까지 유지된다', () => {
+    const t = trip({ boardTime: '08:00', alightTime: '08:40', initialSeat: 'standing', seatLogComplete: null })
+    const { segments } = seatSegments(t, [mkEvent(t.id, { time: '08:10', state: 'seated' })], 480, 520)
+    expect(segments.map((v) => [v.state, v.start, v.end])).toEqual([
+      ['standing', 480, 490], ['seated', 490, 520],
+    ])
   })
 
   it('좌석 정보가 전혀 없으면 전 구간 미확인 (서 있었다고 가정하지 않음)', () => {

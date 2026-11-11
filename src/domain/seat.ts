@@ -1,4 +1,4 @@
-import { diffMinutes } from './time'
+import { diffMinutes, parseHm } from './time'
 import type { DayLog, SeatEvent, SeatState, Trip } from './types'
 
 /**
@@ -28,22 +28,32 @@ export function orderEvents(trip: Pick<Trip, 'boardTime'>, events: SeatEvent[]):
   )
 }
 
+/**
+ * 하차 시각이 확인된 종료 탑승은 좌석 이벤트의 끝도 확정된 것으로 처리한다.
+ * 예전 명시적 완결(true)은 유지하며, 진행 중·하차 시각 미기록의 null/false는 추정하지 않는다.
+ * 데이터 자체를 변경하지 않고 기존 백업을 포함한 조회 시 계산한다.
+ */
+export function isSeatLogComplete(trip: Pick<Trip, 'seatLogComplete'> & Partial<Pick<Trip, 'kind' | 'ongoing' | 'alightTime'>>): boolean {
+  return trip.seatLogComplete === true || (trip.kind === 'ride' && trip.ongoing === false && parseHm(trip.alightTime ?? null) !== null)
+}
+
 export function summarizeSeat(trip: Trip, rawEvents: SeatEvent[]): SeatSummary {
   const events = orderEvents(trip, rawEvents)
   const initial = trip.initialSeat
+  const complete = isSeatLogComplete(trip)
 
   const immediate = initial === null ? null : initial === 'seated'
 
   let everSeated: boolean | null
   if (initial === 'seated' || events.some((e) => e.state === 'seated')) everSeated = true
-  else if (initial === 'standing' && trip.seatLogComplete === true) everSeated = false
+  else if (initial === 'standing' && complete) everSeated = false
   else everSeated = null
 
   let final: SeatState | null = null
   if (events.length > 0) {
     // 마지막 변화 이후 기록이 더 없다는 확인이 있어야 최종 상태로 인정
-    if (trip.seatLogComplete === true) final = events[events.length - 1].state
-  } else if (trip.seatLogComplete === true) {
+    if (complete) final = events[events.length - 1].state
+  } else if (complete) {
     final = initial
   }
 
@@ -67,7 +77,7 @@ export function summarizeSeat(trip: Trip, rawEvents: SeatEvent[]): SeatSummary {
 }
 
 function standingMinutes(trip: Trip, events: SeatEvent[]): number | null {
-  if (trip.seatLogComplete !== true || trip.initialSeat === null) return null
+  if (!isSeatLogComplete(trip) || trip.initialSeat === null) return null
   const total = tripDuration(trip, false)
   if (total === null || !trip.boardTime) return null
   let cur: SeatState = trip.initialSeat

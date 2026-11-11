@@ -119,7 +119,7 @@ describe('지금 탑승 · 하차 · 좌석 변화', () => {
     ])
     expect(results.filter(Boolean)).toHaveLength(1)
     const saved = (await db.trips.get(t.id))!
-    expect(saved).toMatchObject({ ongoing: false, alightTime: '09:00', alightPlace: '나역', initialSeat: 'standing', seatLogComplete: null })
+    expect(saved).toMatchObject({ ongoing: false, alightTime: '09:00', alightPlace: '나역', initialSeat: 'standing', seatLogComplete: true })
     expect(await db.seatEvents.toArray()).toEqual(events)
     const edited = await saveTrip({ ...saved, alightTime: '09:05', alightPlace: '수정역' }, undefined, db)
     expect(await endRide(t.id, { alightTime: '10:00' }, db)).toBeUndefined()

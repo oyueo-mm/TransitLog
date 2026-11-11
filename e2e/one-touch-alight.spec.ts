@@ -26,7 +26,7 @@ for (const state of ['standing', 'seated', null, 'changed'] as const) {
     expect(dialogs).toEqual([])
     const saved = await readDb<Trip>(page, 'trips')
     expect(saved).toHaveLength(1)
-    expect(saved[0]).toMatchObject({ ongoing: false, alightTime: '12:34', alightPlace: '하차예정역', initialSeat: trip.initialSeat, seatLogComplete: trip.seatLogComplete })
+    expect(saved[0]).toMatchObject({ ongoing: false, alightTime: '12:34', alightPlace: '하차예정역', initialSeat: trip.initialSeat, seatLogComplete: true })
     expect(await readDb<SeatEvent>(page, 'seatEvents')).toEqual(beforeEvents)
     await page.reload()
     expect((await readDb<Trip>(page, 'trips'))[0]).toMatchObject({ ongoing: false, alightTime: '12:34' })

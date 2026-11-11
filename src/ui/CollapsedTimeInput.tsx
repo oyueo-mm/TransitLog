@@ -3,10 +3,11 @@ import { nowHm } from '../domain/time'
 import { format12, TimeInput } from './TimeInput'
 
 /** Edit a local draft; only Done applies it to the containing record form. */
-export function CollapsedTimeInput({ label, value, onChange }: {
+export function CollapsedTimeInput({ label, value, onChange, clearable = true }: {
   label: string
   value: string | null
   onChange: (value: string | null) => void
+  clearable?: boolean
 }) {
   const id = useId()
   const [open, setOpen] = useState(false)
@@ -32,7 +33,7 @@ export function CollapsedTimeInput({ label, value, onChange }: {
       </div>
       <div id={id} hidden={!open}>
         {open && <>
-          <TimeInput label={label} value={draft} onChange={setDraft} nowLabel="지금" />
+          <TimeInput label={label} value={draft} onChange={setDraft} nowLabel="지금" clearable={clearable} />
           <div className="grid2">
             <button type="button" className="btn-primary" aria-label={`${label} 완료`} onClick={() => {
               onChange(draft)
