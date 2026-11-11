@@ -7,7 +7,7 @@ export function SeatStatus({ trip, events, summary }: { trip: Trip; events: Seat
   const info = seatCardInfo(trip, events, summary ?? summarizeSeat(trip, events))
   if (!info) return null
   return (
-    <div className={`seat-status seat-status-${info.tone}`} data-testid="seat-status" aria-label={`착석 상태: ${info.label}`}>
+    <div className={`seat-status seat-status-${info.tone}`} data-testid="seat-status">
       <span className="seat-status-label">{info.label}</span>
       {info.detail && <span className="seat-status-detail">{info.detail}</span>}
     </div>
