@@ -152,10 +152,10 @@ export function StatsPage() {
                     <strong>즉시 착석률</strong>: 탑승할 때 좌석 상태를 기록한 탑승 중 앉아서 탄 비율입니다.
                   </li>
                   <li>
-                    <strong>한 번이라도 착석</strong>: 앉았던 기록과 하차 완료 후에도 한 번도 앉지 않은 기록만 셉니다. 하차하지 않은 서서 탑승 기록은 미확인으로 제외합니다.
+                    <strong>한 번이라도 착석</strong>: 앉았던 기록과 하차 완료 후에도 한 번도 앉지 않은 기록만 셉니다. 아직 탑승 중인 서서 탑승 기록은 미확인으로 제외합니다.
                   </li>
                   <li>
-                    <strong>최종 착석률</strong>: 하차가 완료되었거나 좌석 로그가 별도로 완결된 탑승을 셉니다.
+                    <strong>최종 착석률</strong>: 종료된 탑승의 마지막 기록 좌석 상태를 기준으로 셉니다.
                   </li>
                   <li>하차 여부나 좌석 상태가 불명확한 기록은 임의로 서서/앉아서 이동한 것으로 분류하지 않습니다.</li>
                 </ul>
@@ -176,9 +176,9 @@ export function StatsPage() {
                 den={seat.everSeated.den}
                 total={cov.total}
                 bias="하차하지 않은 서서 탑승 기록이 빠져 실제보다 높게 보일 수 있어요"
-                def="탑승 중 한 번이라도 앉은 비율. 하차 완료 기록은 추가 좌석 확인 없이 판정한다"
+                def="탑승 중 한 번이라도 앉은 비율. 종료된 기록은 추가 변화가 없으면 마지막 좌석 상태가 유지된 것으로 본다"
                 reasons={[
-                  ['서서 탔지만 하차 기록이 없어 이후 상태 미확인', cov.ever.unconfirmedStanding],
+                  ['탑승 중이라 최종 변화가 미확인', cov.ever.unconfirmedStanding],
                   ['좌석 정보가 없음', cov.ever.unknown],
                 ]}
               />
@@ -187,8 +187,8 @@ export function StatsPage() {
                 num={seat.final.num}
                 den={seat.final.den}
                 total={cov.total}
-                def="하차 직전 앉아 있던 비율 (하차 시각 기록 또는 별도 완결 확인 기준)"
-                reasons={[['하차 및 좌석 완결 정보 부족', cov.final.unconfirmed]]}
+                def="종료된 탑승의 마지막 기록 좌석 상태 기준. 하차 시각은 기록된 값만 표시"
+                reasons={[['탑승 중이거나 좌석 기록이 부족함', cov.final.unconfirmed]]}
               />
               <div>
                 <dt>서서 탄 뒤 착석까지 평균</dt>
