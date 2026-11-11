@@ -92,8 +92,9 @@ export function StatsPage() {
   const standing = averageStandingMinutes(rows)
   const crowd = crowdingDistribution(rows)
   const per = bucket === 'day' ? ridesPerDay(rows) : bucket === 'week' ? ridesPerWeek(rows) : ridesPerMonth(rows)
-  const chartTo = period === 'all' ? [...rows.map((r) => r.trip.date)].sort().at(-1) ?? todayStr() : to
-  const chartFrom = period === 'all' ? addDays(chartTo, bucket === 'day' ? -13 : bucket === 'week' ? -83 : -365) : from || chartTo
+  const chartTo = period === 'all' || to === '9999-12-31' ? [...rows.map((r) => r.trip.date)].sort().at(-1) ?? todayStr() : to
+  const windowFrom = addDays(chartTo, bucket === 'day' ? -13 : bucket === 'week' ? -83 : -365)
+  const chartFrom = from && from > windowFrom ? from : windowFrom
   const perShown = fillEmptyPeriods(per, bucket, chartFrom, chartTo).slice(bucket === 'day' ? -14 : -12)
   const timeGroups = byBoardingInterval(rows, timeStep)
   const subwayRows: RideRow[] = rows.filter((r) => r.trip.mode === 'subway')
