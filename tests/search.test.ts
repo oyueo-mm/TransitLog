@@ -179,6 +179,14 @@ describe('조건 필터', () => {
     expect(normalizeFilters(null)).toEqual(EMPTY_FILTERS)
     expect(normalizeFilters({ lines: 'oops', q: 3, quick: 'zzz', cars: [1, 'x', {}] }).lines).toEqual([])
     expect(normalizeFilters({ quick: 'zzz' }).quick).toBe('all')
+    const restored = normalizeFilters({ destinations: ['구행'], lines: ['1호선', '2호선'], alightStations: ['가역', '나역'], seatOutcome: ['ever', 'mid'], weekdays: [1, 2], cars: [2, 5], seatFinal: ['standing', 'seated'] })
+    expect(restored.destinations).toEqual([]) // 제거된 행선지 필터는 더 이상 검색을 제한하지 않음
+    expect(restored.lines).toEqual(['1호선', '2호선'])
+    expect(restored.alightStations).toEqual(['가역', '나역'])
+    expect(restored.seatOutcome).toEqual(['ever', 'mid'])
+    expect(restored.weekdays).toEqual([1, 2])
+    expect(restored.cars).toEqual([2]) // 상세 필터는 단일 선택만 유지
+    expect(restored.seatFinal).toEqual(['standing'])
   })
 })
 
