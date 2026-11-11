@@ -1,4 +1,4 @@
-import { orderEvents, summarizeSeat, tripDuration, type SeatSummary } from './seat'
+import { isSeatLogComplete, orderEvents, summarizeSeat, tripDuration, type SeatSummary } from './seat'
 import { countMidSeats } from './timeline'
 import { stationKey } from './stations'
 import { addDays, parseHm, parseDate, weekdayIndex, weekStart, WEEKDAY_NAMES } from './time'
@@ -31,6 +31,8 @@ export type SeatInitial = 'seated' | 'standing' | 'unrecorded'
 /** 탑승 중 좌석 변화: 중간 착석함 / 끝까지 서 있었음(확인) / 끝까지 앉아 있었음(확인) / 변화 기록 없음·완결 미확인 */
 export type SeatChange = 'midSeat' | 'stoodAll' | 'seatedAll' | 'unconfirmed'
 export type SeatFinal = 'seated' | 'standing' | 'unknown'
+/** 검색 화면의 통합 좌석 상태: 같은 항목 내에서는 OR, 다른 검색 조건과는 AND */
+export type SeatOutcome = 'initial' | 'mid' | 'ever' | 'stoodAll' | 'unknown'
 export type DelayFilter = 'yes' | 'no' | 'unrecorded'
 export type SortKey = 'newest' | 'oldest' | 'timeAsc' | 'timeDesc' | 'durationDesc' | 'durationAsc'
 
@@ -58,6 +60,7 @@ export interface SearchFilters {
   doors: number[]
   sides: Side[]
   waitOrders: number[]
+  seatOutcome: SeatOutcome[]
   seatInitial: SeatInitial[]
   seatChange: SeatChange[]
   seatFinal: SeatFinal[]
@@ -89,6 +92,7 @@ export const EMPTY_FILTERS: SearchFilters = {
   doors: [],
   sides: [],
   waitOrders: [],
+  seatOutcome: [],
   seatInitial: [],
   seatChange: [],
   seatFinal: [],
@@ -122,7 +126,7 @@ export function activeFilterCount(f: SearchFilters): number {
   if (f.quick !== 'all' || f.dateFrom || f.dateTo) n++
   const groups: unknown[][] = [
     f.weekdays, f.modes, f.kinds, f.purposes, f.lines, f.boardStations, f.alightStations, f.destinations, f.origins,
-    f.cars, f.doors, f.sides, f.waitOrders, f.seatInitial, f.seatChange, f.seatFinal, f.crowding, f.delay,
+    f.cars, f.doors, f.sides, f.waitOrders, f.seatOutcome, f.seatInitial, f.seatChange, f.seatFinal, f.crowding, f.delay,
   ]
   for (const g of groups) if (g.length) n++
   if (f.boardFrom || f.boardTo) n++
@@ -232,7 +236,7 @@ export function buildIndex(trip: Trip, events: SeatEvent[]): TripIndex {
     if (e.state === 'seated') add(...SEAT_WORDS.seated, '중간착석')
     else add(...SEAT_WORDS.rose, ...SEAT_WORDS.standing)
   }
-  if (trip.kind === 'ride' && trip.seatLogComplete === true && trip.initialSeat === 'standing' && !ordered.some((e) => e.state === 'seated')) add('끝까지서있음')
+  if (trip.kind === 'ride' && isSeatLogComplete(trip) && trip.initialSeat === 'standing' && !ordered.some((e) => e.state === 'seated')) add('끝까지서있음')
 
   const stations = new Set<string>()
   for (const p of [trip.boardPlace, trip.alightPlace, trip.trainOrigin, trip.trainDestination, ...ordered.map((e) => e.place)]) if (p) stations.add(stationKey(p))
@@ -356,8 +360,8 @@ export function seatGroups(trip: Trip, f: RideFacts) {
   if (trip.kind === 'ride') {
     if (f.midSeat > 0) change.push('midSeat')
     if (summary.everSeated === false) change.push('stoodAll')
-    if (trip.initialSeat === 'seated' && trip.seatLogComplete === true && !ordered.some((e) => e.state === 'standing')) change.push('seatedAll')
-    if (!hasEvents && trip.seatLogComplete !== true) change.push('unconfirmed')
+    if (trip.initialSeat === 'seated' && isSeatLogComplete(trip) && !ordered.some((e) => e.state === 'standing')) change.push('seatedAll')
+    if (!hasEvents && !isSeatLogComplete(trip)) change.push('unconfirmed')
   }
   const final: SeatFinal | null = trip.kind !== 'ride' ? null : summary.final === 'seated' ? 'seated' : summary.final === 'standing' ? 'standing' : 'unknown'
   return { initial, change, final }
@@ -426,6 +430,17 @@ export function matchRecord(rec: SearchRecord, f: SearchFilters, today: string):
     if (!f.delay.includes(d)) return null
   }
   const tags: string[] = []
+  if (f.seatOutcome.length) {
+    if (t.kind !== 'ride') return null
+    const selected = f.seatOutcome.some((status) => {
+      if (status === 'initial') return t.initialSeat === 'seated'
+      if (status === 'mid') return rec.facts.midSeat > 0
+      if (status === 'ever') return rec.facts.summary.everSeated === true
+      if (status === 'stoodAll') return rec.facts.summary.everSeated === false
+      return rec.facts.summary.everSeated === null
+    })
+    if (!selected) return null
+  }
   if (f.seatInitial.length || f.seatChange.length || f.seatFinal.length) {
     const g = seatGroups(t, rec.facts)
     if (f.seatInitial.length && !(g.initial && f.seatInitial.includes(g.initial))) return null
