@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { addDays, dateStr, parseDate, todayStr, WEEKDAY_NAMES } from '../domain/time'
 import { Empty, Section } from '../ui/common'
 import { SearchPanel } from '../ui/SearchPanel'
@@ -18,16 +18,24 @@ function monthGrid(year: number, month: number): Array<string | null> {
 
 export function CalendarPage() {
   const nav = useNavigate()
+  const [urlParams] = useSearchParams()
   const trips = useAllTrips()
   const events = useAllEvents()
   // 상세 화면에서 돌아오면 보던 탭(달력/검색)으로 복귀
   const [view, setViewState] = useState<'cal' | 'list'>(() => {
+    if (urlParams.get('view') === 'list') return 'list'
     try {
       return sessionStorage.getItem('transitlog.calview') === 'list' ? 'list' : 'cal'
     } catch {
       return 'cal'
     }
   })
+  // 통계에서 검색으로 이동한 경우에도 상세 편집 후 검색 탭으로 복귀한다.
+  const linkedToSearch = urlParams.get('view') === 'list'
+  useEffect(() => {
+    if (!linkedToSearch) return
+    try { sessionStorage.setItem('transitlog.calview', 'list') } catch { /* 탭 저장소 미지원 */ }
+  }, [linkedToSearch])
   const setView = (v: 'cal' | 'list') => {
     setViewState(v)
     try {

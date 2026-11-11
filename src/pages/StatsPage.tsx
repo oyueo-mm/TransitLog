@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { addDays, formatDuration, todayStr } from '../domain/time'
 import {
   activityCounts,
@@ -7,6 +8,9 @@ import {
   averageStandingMinutes,
   byCar,
   byCarDoor,
+  byBoardingInterval,
+  fillEmptyPeriods,
+  type TimeInterval,
   byHourBucket,
   byLine,
   byMode,
@@ -22,16 +26,17 @@ import {
   type Group,
   type RideRow,
 } from '../domain/stats'
-import { seatCoverage } from '../domain/coverage'
+import { seatCoverage, MIN_SAMPLE } from '../domain/coverage'
 import { CROWDING_LABEL, type Crowding } from '../domain/types'
 import { Chip, Empty, Ratio, Section, destLabel } from '../ui/common'
 import { Bars, SeatMetric } from '../ui/statBits'
 import { useAllEvents, useAllTrips } from '../ui/hooks'
 
-type Period = 'all' | '30' | '90'
+type Period = 'all' | '30' | '90' | 'custom'
 type Bucket = 'day' | 'week' | 'month'
 
 function GroupTable({ groups, limit = 10, labelOf }: { groups: Group[]; limit?: number; labelOf?: (k: string) => string }) {
+  const [showAll, setShowAll] = useState(false)
   if (groups.length === 0) return <Empty>표시할 데이터가 없습니다. (값이 기록된 탑승만 집계합니다)</Empty>
   return (
     <div className="table" role="table">
@@ -41,7 +46,7 @@ function GroupTable({ groups, limit = 10, labelOf }: { groups: Group[]; limit?: 
         <span role="columnheader">즉시 착석</span>
         <span role="columnheader">한 번이라도</span>
       </div>
-      {groups.slice(0, limit).map((g) => (
+      {groups.slice(0, showAll ? undefined : limit).map((g) => (
         <div className="tr" role="row" key={g.key}>
           <span role="cell" className="k">
             {labelOf ? labelOf(g.key) : g.key}
@@ -56,7 +61,7 @@ function GroupTable({ groups, limit = 10, labelOf }: { groups: Group[]; limit?: 
           </span>
         </div>
       ))}
-      {groups.length > limit && <div className="muted small">상위 {limit}개만 표시 (전체 {groups.length}개)</div>}
+      {groups.length > limit && <button type="button" className="btn-small" onClick={() => setShowAll(!showAll)}>{showAll ? '접기' : `전체 ${groups.length}개 보기`}</button>}
     </div>
   )
 }
@@ -66,12 +71,17 @@ export function StatsPage() {
   const events = useAllEvents()
   const [period, setPeriod] = useState<Period>('all')
   const [bucket, setBucket] = useState<Bucket>('week')
+  const [customFrom, setCustomFrom] = useState('')
+  const [customTo, setCustomTo] = useState('')
+  const [timeStep, setTimeStep] = useState<TimeInterval>(15)
 
-  const { rows, counts } = useMemo(() => {
-    const from = period === 'all' ? '0000-00-00' : addDays(todayStr(), -Number(period))
-    const inPeriod = (trips ?? []).filter((t) => t.date >= from)
-    return { rows: rideRows(inPeriod, events ?? []), counts: activityCounts(inPeriod) }
-  }, [trips, events, period])
+  const { rows, counts, from, to } = useMemo(() => {
+    const today = todayStr()
+    const from = period === 'all' ? '' : period === 'custom' ? (customFrom || '') : addDays(today, 1 - Number(period))
+    const to = period === 'custom' ? (customTo || '9999-12-31') : period === 'all' ? '9999-12-31' : today
+    const inPeriod = from > to ? [] : (trips ?? []).filter((t) => t.date >= from && t.date <= to)
+    return { rows: rideRows(inPeriod, events ?? []), counts: activityCounts(inPeriod), from, to }
+  }, [trips, events, period, customFrom, customTo])
 
   if (!trips || !events) return <div className="page"><p className="muted">불러오는 중…</p></div>
 
@@ -82,7 +92,11 @@ export function StatsPage() {
   const standing = averageStandingMinutes(rows)
   const crowd = crowdingDistribution(rows)
   const per = bucket === 'day' ? ridesPerDay(rows) : bucket === 'week' ? ridesPerWeek(rows) : ridesPerMonth(rows)
-  const perShown = bucket === 'day' ? per.slice(-14) : per.slice(-12)
+  const chartTo = period === 'all' || to === '9999-12-31' ? [...rows.map((r) => r.trip.date)].sort().at(-1) ?? todayStr() : to
+  const windowFrom = addDays(chartTo, bucket === 'day' ? -13 : bucket === 'week' ? -83 : -365)
+  const chartFrom = from && from > windowFrom ? from : windowFrom
+  const perShown = fillEmptyPeriods(per, bucket, chartFrom, chartTo).slice(bucket === 'day' ? -14 : -12)
+  const timeGroups = byBoardingInterval(rows, timeStep)
   const subwayRows: RideRow[] = rows.filter((r) => r.trip.mode === 'subway')
   const modeGroups = byMode(rows)
 
@@ -94,18 +108,20 @@ export function StatsPage() {
       </header>
 
       <div className="chips filter" role="group" aria-label="기간">
-        {([['all', '전체'], ['90', '최근 90일'], ['30', '최근 30일']] as Array<[Period, string]>).map(([p, l]) => (
+        {([['all', '전체'], ['90', '최근 90일'], ['30', '최근 30일'], ['custom', '기간 지정']] as Array<[Period, string]>).map(([p, l]) => (
           <Chip key={p} value={p} selected={period === p} onSelect={setPeriod} small>
             {l}
           </Chip>
         ))}
       </div>
 
-      {rows.length === 0 ? (
-        <Empty>이 기간에 탑승 기록이 없습니다. 기록이 쌓이면 통계가 표시됩니다.</Empty>
-      ) : (
-        <>
-          <Section title="요약">
+      {period === 'custom' && <div className="field-row stats-custom-period">
+        <label className="field-label" htmlFor="stat-from">시작</label>
+        <input id="stat-from" type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
+        <label className="field-label" htmlFor="stat-to">종료</label>
+        <input id="stat-to" type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
+      </div>}
+      <Section title="종합 통계">
             <dl className="totals">
               <div>
                 <dt>탑승</dt>
@@ -121,9 +137,12 @@ export function StatsPage() {
               </div>
             </dl>
             <p className="hint">놓침·관찰 기록은 이동 횟수와 착석률 계산에 포함하지 않습니다.</p>
-          </Section>
-
-          <Section title="착석 지표">
+      </Section>
+      {rows.length === 0 ? (
+        <Empty>이 기간에 탑승 기록이 없습니다. 놓침·관찰 기록은 위의 종합 통계에 포함됩니다.</Empty>
+      ) : (
+        <>
+          <Section title="좌석 분석">
             <div className="notice sample-overview" role="note">
               <strong>전체 탑승 {cov.total}건</strong> 중 판정 가능한 건수는 지표마다 다릅니다 — 즉시 {seat.immediate.den}건 · 한 번이라도 {seat.everSeated.den}건 · 최종 {seat.final.den}건.
               <details>
@@ -184,12 +203,12 @@ export function StatsPage() {
               <div>
                 <dt>평균 탑승 시간</dt>
                 <dd>{dur.avg === null ? '—' : formatDuration(Math.round(dur.avg))} <span className="muted">(표본 {dur.n})</span></dd>
-                <dd className="def">환승·대기·도보 제외, 승·하차 시각이 있는 탑승만</dd>
+                <dd className="def">환승·대기·도보 제외, 승·하차 시각으로 계산했거나 소요 시간이 직접 기록된 탑승만</dd>
               </div>
             </dl>
           </Section>
 
-          <Section title="탑승 횟수">
+          <Section title="이용 패턴 · 탑승 횟수">
             <div className="chips filter" role="group" aria-label="집계 단위">
               {([['day', '일별'], ['week', '주별'], ['month', '월별']] as Array<[Bucket, string]>).map(([b, l]) => (
                 <Chip key={b} value={b} selected={bucket === b} onSelect={setBucket} small>
@@ -199,6 +218,43 @@ export function StatsPage() {
             </div>
             <Bars items={perShown} />
             <p className="hint">{bucket === 'week' ? '주 시작: 월요일 날짜' : ''}</p>
+          </Section>
+
+          <Section title="시간대별 착석 분석">
+            <div className="row-between">
+              <p className="hint">탑승 시각 기준. 각 시간대의 판정 가능한 기록만 착석률 분모에 포함합니다.</p>
+              <div className="field-row">
+                <label className="field-label" htmlFor="stats-step">간격</label>
+                <select id="stats-step" value={timeStep} onChange={(e) => setTimeStep(Number(e.target.value) as TimeInterval)}>
+                  {[5, 10, 15, 30, 60].map((n) => <option value={n} key={n}>{n === 60 ? '1시간' : `${n}분`}</option>)}
+                </select>
+              </div>
+            </div>
+            {timeGroups.length === 0 ? <Empty>탑승 시각이 기록된 건이 없습니다.</Empty> : (
+              <div className="time-stat-list">
+                <div className="time-stat-head"><span>시간대</span><span>즉시 착석률</span><span>평균 착석 대기</span><span>표본</span></div>
+                {timeGroups.map((g) => {
+                  const pct = g.seat.immediate.pct
+                  const qs = new URLSearchParams({ view: 'list', boardFrom: g.from, boardTo: g.to })
+                  if (period !== 'all') {
+                    if (from) qs.set('dateFrom', from)
+                    if (to && to !== '9999-12-31') qs.set('dateTo', to)
+                  }
+                  return (
+                    <Link key={g.key} to={`/calendar?${qs.toString()}`} className="time-stat-row" title="이 시간대의 탑승 기록 검색">
+                      <strong>{g.key}</strong>
+                      <span className="time-rate">
+                        <span className="time-rate-track"><span style={{ width: `${pct ?? 0}%` }} /></span>
+                        <span>{pct === null ? '—' : `${Math.round(pct)}%`}</span>
+                      </span>
+                      <span>{g.toSeat.avg === null ? '—' : formatDuration(Math.round(g.toSeat.avg))}</span>
+                      <span>{g.seat.immediate.num}/{g.seat.immediate.den}{g.seat.immediate.den > 0 && g.seat.immediate.den < MIN_SAMPLE ? ' · 표본 적음' : ''}</span>
+                    </Link>
+                  )
+                })}
+              </div>
+            )}
+            <p className="hint">시간대를 누르면 그 시간에 탑승한 실제 기록을 검색합니다. 과거 착석률은 미래 착석을 보장하지 않습니다.</p>
           </Section>
 
           <Section title="노선별 이용">

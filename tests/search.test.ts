@@ -3,6 +3,7 @@ import {
   EMPTY_FILTERS,
   activeFilterCount,
   groupByDate,
+  groupByBoardTime,
   inTimeRange,
   normalizeFilters,
   resolveDateRange,
@@ -183,6 +184,13 @@ describe('정렬·묶기', () => {
     const desc = sortMatches(search(recs, F(), TODAY), 'durationDesc').map((m) => m.rec.trip.id)
     expect(desc.slice(0, 3)).toEqual([a.id, c.id, b.id])
     expect(new Set(desc.slice(3))).toEqual(new Set([d.id, e.id]))
+  })
+  it('탑승 시각순은 서로 다른 날짜도 시각 기준으로 정렬하고 시각 미기록은 뒤에 둔다', () => {
+    const sorted = sortMatches(search(recs, F(), TODAY), 'timeAsc')
+    expect(sorted.map((m) => m.rec.trip.id)).toEqual([d.id, e.id, a.id, b.id, c.id])
+    const grouped = groupByBoardTime(sorted, 15)
+    expect(grouped.map(([key]) => key)).toContain('08:15~08:29')
+    expect(grouped.find(([key]) => key === '08:15~08:29')?.[1][0].rec.trip.id).toBe(a.id)
   })
   it('날짜별 묶음', () => {
     const g = groupByDate(sortMatches(search(recs, F(), TODAY), 'newest'))

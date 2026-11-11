@@ -1,4 +1,4 @@
-import { hourBucket, HOUR_BUCKETS, monthKey, weekStart, WEEKDAY_NAMES, weekdayIndex } from './time'
+import { addDays, hourBucket, HOUR_BUCKETS, monthKey, parseDate, parseHm, weekStart, WEEKDAY_NAMES, weekdayIndex } from './time'
 import { summarizeSeat, tripDuration, type SeatSummary } from './seat'
 import type { Crowding, SeatEvent, Trip } from './types'
 
@@ -101,7 +101,9 @@ export const byCar = (rows: RideRow[]) =>
 export const byLine = (rows: RideRow[]) => groupBy(rows, (r) => r.trip.line)
 export const byRoute = (rows: RideRow[]) =>
   groupBy(rows, (r) =>
-    r.trip.boardPlace && r.trip.alightPlace ? `${r.trip.boardPlace} → ${r.trip.alightPlace}` : null,
+    r.trip.boardPlace && r.trip.alightPlace
+      ? `${r.trip.line ?? (r.trip.mode === 'subway' ? '지하철' : '버스')} · ${r.trip.boardPlace} → ${r.trip.alightPlace}`
+      : null,
   )
 export const byMode = (rows: RideRow[]) =>
   groupBy(rows, (r) => (r.trip.mode === 'subway' ? '지하철' : '버스'))
@@ -117,6 +119,48 @@ export function countBy(trips: Trip[], keyOf: (t: Trip) => string): Array<{ key:
 export const ridesPerDay = (rows: RideRow[]) => countBy(rows.map((r) => r.trip), (t) => t.date)
 export const ridesPerWeek = (rows: RideRow[]) => countBy(rows.map((r) => r.trip), (t) => weekStart(t.date))
 export const ridesPerMonth = (rows: RideRow[]) => countBy(rows.map((r) => r.trip), (t) => monthKey(t.date))
+
+export type TimeInterval = 5 | 10 | 15 | 30 | 60
+
+/** 시각이 확인된 탑승만 집계; 시간대별 서로 다른 표본 분모는 Group.seat 에 보존한다. */
+export function byBoardingInterval(rows: RideRow[], step: TimeInterval): Array<Group & { from: string; to: string; toSeat: Avg }> {
+  const by = new Map<number, RideRow[]>()
+  for (const r of rows) {
+    const minutes = parseHm(r.trip.boardTime)
+    if (minutes === null) continue
+    const key = Math.floor(minutes / step) * step
+    const arr = by.get(key)
+    if (arr) arr.push(r)
+    else by.set(key, [r])
+  }
+  const hm = (v: number) => `${String(Math.floor(v / 60)).padStart(2, '0')}:${String(v % 60).padStart(2, '0')}`
+  return [...by.entries()].sort((a, b) => a[0] - b[0]).map(([key, records]) => {
+    const from = hm(key)
+    const to = hm(Math.min(1439, key + step - 1))
+    return { key: `${from}~${to}`, from, to, count: records.length, seat: seatRatios(records), toSeat: averageMinutesToFirstSeat(records) }
+  })
+}
+
+/** 필터 기간의 중간에 탑승이 없는 날짜·주·월도 0건으로 채운다. */
+export function fillEmptyPeriods(items: Array<{ key: string; count: number }>, bucket: 'day' | 'week' | 'month', from: string, to: string) {
+  if (from > to) return items
+  const counts = new Map(items.map((x) => [x.key, x.count]))
+  const out: Array<{ key: string; count: number }> = []
+  let current = bucket === 'day' ? from : bucket === 'week' ? weekStart(from) : `${from.slice(0, 7)}-01`
+  let steps = 0
+  while (current <= to && steps++ < 1100) {
+    const key = bucket === 'month' ? monthKey(current) : current
+    out.push({ key, count: counts.get(key) ?? 0 })
+    if (bucket === 'day') current = addDays(current, 1)
+    else if (bucket === 'week') current = addDays(current, 7)
+    else {
+      const d = parseDate(current)
+      d.setMonth(d.getMonth() + 1)
+      current = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
+    }
+  }
+  return out
+}
 
 export function crowdingDistribution(rows: RideRow[]): { dist: Record<Crowding, number>; n: number } {
   const dist: Record<Crowding, number> = { free: 0, normal: 0, crowded: 0, very_crowded: 0 }

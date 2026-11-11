@@ -50,7 +50,11 @@ export function summarizeSeat(trip: Trip, rawEvents: SeatEvent[]): SeatSummary {
   let minutesToFirstSeat: number | null = null
   if (initial === 'standing') {
     const first = events.find((e) => e.state === 'seated')
-    if (first) minutesToFirstSeat = diffMinutes(trip.boardTime, first.time)
+    if (first) {
+      const elapsed = diffMinutes(trip.boardTime, first.time)
+      const rideDuration = tripDuration(trip, false)
+      if (elapsed !== null && (rideDuration === null || elapsed <= rideDuration)) minutesToFirstSeat = elapsed
+    }
   }
 
   return {
