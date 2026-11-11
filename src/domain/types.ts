@@ -60,7 +60,7 @@ export interface Trip {
   waitOrder: number | null
   /** 탑승 시점의 좌석 상태 */
   initialSeat: SeatState | null
-  /** true = 탑승 중 좌석 변화를 모두 기록함(추가 변화 없음). null = 미확인 */
+  /** true = 좌석 변화 기록 완결 (하차 시 자동 설정). 이전 null/false 기록도 종료·하차 시각이 확인되면 계산상 완결 처리 */
   seatLogComplete: boolean | null
   crowding: Crowding | null
   /** 지연 분. 0 = 지연 없음이 확인됨 */
