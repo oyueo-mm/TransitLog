@@ -168,7 +168,7 @@ test.describe('고급 검색', () => {
     await multi(page, '노선·버스 번호', '1호선')
     await multi(page, '노선·버스 번호', '2호선')
     await expect(cards(page)).toHaveCount(3)
-    await multi(page, '승차역', '가가역')
+    await multi(page, '승차역', '가가')
     await multi(page, '승차역', '나나역')
     await expect(cards(page)).toHaveCount(3)
     await multi(page, '하차역', '나나역')
