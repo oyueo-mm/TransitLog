@@ -32,7 +32,7 @@ export type SeatInitial = 'seated' | 'standing' | 'unrecorded'
 export type SeatChange = 'midSeat' | 'stoodAll' | 'seatedAll' | 'unconfirmed'
 export type SeatFinal = 'seated' | 'standing' | 'unknown'
 export type DelayFilter = 'yes' | 'no' | 'unrecorded'
-export type SortKey = 'newest' | 'oldest' | 'durationDesc' | 'durationAsc'
+export type SortKey = 'newest' | 'oldest' | 'timeAsc' | 'timeDesc' | 'durationDesc' | 'durationAsc'
 
 export interface SearchFilters {
   q: string
@@ -449,24 +449,24 @@ export function search(records: SearchRecord[], f: SearchFilters, today: string)
   return out
 }
 
-/** 같은 날짜 안에서는 승차 시각순(시각 없는 기록은 뒤). 날짜 순서와 소요 시간 정렬은 sort 로 정한다 */
+/** 날짜 정렬은 같은 날의 시각순. 시각 정렬은 날짜에 관계없이 탑승 시각을 우선한다. */
 export function sortMatches(ms: SearchMatch[], sort: SortKey): SearchMatch[] {
-  const time = (m: SearchMatch) => parseHm(m.rec.trip.boardTime) ?? parseHm(m.rec.trip.alightTime)
-  const byTime = (a: SearchMatch, b: SearchMatch) => {
+  const time = (m: SearchMatch) => parseHm(m.rec.trip.boardTime)
+  const byTime = (a: SearchMatch, b: SearchMatch, dir = 1) => {
     const ta = time(a)
     const tb = time(b)
-    if (ta === null && tb === null) return a.rec.trip.createdAt - b.rec.trip.createdAt
+    if (ta === null && tb === null) return b.rec.trip.date.localeCompare(a.rec.trip.date) || a.rec.trip.createdAt - b.rec.trip.createdAt
     if (ta === null) return 1
     if (tb === null) return -1
-    return ta - tb || a.rec.trip.createdAt - b.rec.trip.createdAt
+    return (ta - tb) * dir || b.rec.trip.date.localeCompare(a.rec.trip.date) || a.rec.trip.createdAt - b.rec.trip.createdAt
   }
   const arr = [...ms]
+  if (sort === 'timeAsc' || sort === 'timeDesc') return arr.sort((a, b) => byTime(a, b, sort === 'timeAsc' ? 1 : -1))
   if (sort === 'durationDesc' || sort === 'durationAsc') {
     const dir = sort === 'durationDesc' ? -1 : 1
     return arr.sort((a, b) => {
       const da = a.rec.duration
       const db = b.rec.duration
-      // 소요 시간을 모르는 기록은 항상 맨 뒤
       if (da === null && db === null) return b.rec.trip.date.localeCompare(a.rec.trip.date) || byTime(a, b)
       if (da === null) return 1
       if (db === null) return -1
@@ -485,6 +485,26 @@ export function groupByDate(ms: SearchMatch[]): Array<[string, SearchMatch[]]> {
     else g.set(m.rec.trip.date, [m])
   }
   return [...g.entries()]
+}
+
+export type TimeStep = 5 | 10 | 15 | 30 | 60
+
+/** 시각 미기록은 별도 그룹으로 두며, 날짜가 달라도 같은 탑승 시간대를 묶는다. */
+export function groupByBoardTime(ms: SearchMatch[], step: TimeStep): Array<[string, SearchMatch[]]> {
+  const grouped = new Map<number, SearchMatch[]>()
+  for (const m of ms) {
+    const minute = parseHm(m.rec.trip.boardTime)
+    const key = minute === null ? -1 : Math.floor(minute / step) * step
+    const a = grouped.get(key)
+    if (a) a.push(m)
+    else grouped.set(key, [m])
+  }
+  const label = (minute: number) => {
+    if (minute < 0) return '탑승 시각 미기록'
+    const hm = (v: number) => `${String(Math.floor(v / 60)).padStart(2, '0')}:${String(v % 60).padStart(2, '0')}`
+    return `${hm(minute)}~${hm(Math.min(1439, minute + step - 1))}`
+  }
+  return [...grouped.entries()].sort((a, b) => (a[0] < 0 ? 1 : b[0] < 0 ? -1 : a[0] - b[0])).map(([key, list]) => [label(key), list])
 }
 
 /** 자동 완성 후보: 저장된 값만, 많이 쓴 순 (같은 역의 표기 차이는 가장 많이 쓴 표기로 합침) */
