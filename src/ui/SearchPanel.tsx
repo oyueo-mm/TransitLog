@@ -36,7 +36,7 @@ interface Saved {
   shown: number
   open: boolean
   scrollY: number
-  group: 'date' | 'time'
+  group: 'date' | 'time' | 'none'
   step: TimeStep
   center: string
 }
@@ -51,7 +51,7 @@ function load(): Saved {
         shown: typeof raw.shown === 'number' && raw.shown >= PAGE ? raw.shown : PAGE,
         open: !!raw.open,
         scrollY: typeof raw.scrollY === 'number' ? raw.scrollY : 0,
-        group: raw.group === 'time' ? 'time' : 'date',
+        group: raw.group === 'time' || raw.group === 'none' ? raw.group : 'date',
         step: ([5, 10, 15, 30, 60] as number[]).includes(raw.step as number) ? raw.step as TimeStep : 15,
         center: typeof raw.center === 'string' && parseHm(raw.center) !== null ? raw.center : '08:00',
       }
@@ -225,7 +225,7 @@ export function SearchPanel({ trips, events }: { trips: Trip[]; events: SeatEven
   const records = useMemo(() => toRecords(trips, events), [trips, events])
   const matches = useMemo(() => sortMatches(search(records, filters, today), sort), [records, filters, sort, today])
   const visible = matches.slice(0, shown)
-  const grouped = useMemo(() => group === 'time' ? groupByBoardTime(visible, step) : groupByDate(visible), [visible, group, step])
+  const grouped = useMemo(() => group === 'time' ? groupByBoardTime(visible, step, sort === 'timeDesc') : group === 'none' ? [['검색 결과', visible] as [string, SearchMatch[]]] : groupByDate(visible), [visible, group, step, sort])
 
   // 처음 한 번, 보관한 스크롤 위치로 복원
   useEffect(() => {
@@ -261,6 +261,8 @@ export function SearchPanel({ trips, events }: { trips: Trip[]; events: SeatEven
     ['today', '오늘'],
     ['week', '이번 주'],
     ['month', '이번 달'],
+    ['30', '최근 30일'],
+    ['90', '최근 90일'],
     ['custom', '직접 지정'],
   ]
   const noDur = matches.filter((m) => m.rec.duration === null).length
@@ -394,7 +396,7 @@ export function SearchPanel({ trips, events }: { trips: Trip[]; events: SeatEven
           <label htmlFor="sort" className="field-label">
             정렬
           </label>
-          <select id="sort" value={sort} onChange={(e) => setSort(e.target.value as SortKey)}>
+          <select id="sort" value={sort} onChange={(e) => { const v = e.target.value as SortKey; setSort(v); if (v === 'timeAsc' || v === 'timeDesc') setGroup('time'); if (v === 'durationAsc' || v === 'durationDesc') setGroup('none') }}>
             <option value="newest">최신순</option>
             <option value="oldest">오래된순</option>
             <option value="timeAsc">탑승 시각 빠른 순</option>
@@ -408,6 +410,7 @@ export function SearchPanel({ trips, events }: { trips: Trip[]; events: SeatEven
         <div className="seg" role="group" aria-label="결과 묶음">
           <button type="button" className={`seg-btn ${group === 'date' ? 'is-on' : ''}`} aria-pressed={group === 'date'} onClick={() => setGroup('date')}>날짜별</button>
           <button type="button" className={`seg-btn ${group === 'time' ? 'is-on' : ''}`} aria-pressed={group === 'time'} onClick={() => setGroup('time')}>시간대별</button>
+          <button type="button" className={`seg-btn ${group === 'none' ? 'is-on' : ''}`} aria-pressed={group === 'none'} onClick={() => setGroup('none')}>목록</button>
         </div>
         {group === 'time' && <div className="field-row">
           <label className="field-label" htmlFor="time-step">간격</label>
