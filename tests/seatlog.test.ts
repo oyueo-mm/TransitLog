@@ -324,7 +324,7 @@ describe('판정 가능 표본과 해석 주의', () => {
       row({ initialSeat: 'seated' }), // 하차 완료: 즉시 ✓ 한번이라도 ✓ 최종 ✓
       row({ initialSeat: 'standing', seatLogComplete: true }, [{ time: '08:10', state: 'seated' }]), // ✓ ✓ ✓
       row({ initialSeat: 'standing', seatLogComplete: true }), // ✓ 끝까지 서서 ✓
-      row({ initialSeat: 'standing', alightTime: null }), // 하차 미확인: 즉시 ✓, 한번이라도 제외, 최종 제외
+      row({ initialSeat: 'standing', alightTime: null, ongoing: true }), // 진행 중: 즉시 ✓, 한번이라도 제외, 최종 제외
       row({ initialSeat: null }), // 전부 제외
       row({ kind: 'missed', initialSeat: 'seated' }), // 탑승 아님
     ]
