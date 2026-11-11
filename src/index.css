@@ -1612,3 +1612,27 @@ a.btn-text {
 .search-condition-actions { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; min-width: 0; }
 .search-condition-actions > button { flex: 0 1 auto; white-space: normal; }
 @media (max-width: 480px) { .search-condition-actions { justify-content: flex-start; } }
+
+/* 검색 조건: 넓은 칩 묶음 대신 접힌 체크 목록 및 단일 선택 메뉴 */
+.search-multi { position: relative; }
+.search-multi-details { position: relative; width: 100%; min-width: 0; }
+.search-multi-details[open] { z-index: 30; }
+.search-multi-summary { display: flex; align-items: center; gap: 8px; min-width: 0; width: 100%; min-height: var(--tap); padding: 9px 12px; cursor: pointer; list-style: none; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); }
+.search-multi-summary::-webkit-details-marker { display: none; }
+.search-multi-summary > svg { flex: none; margin-left: auto; transition: transform 120ms ease; }
+.search-multi-details[open] .search-multi-summary > svg { transform: rotate(180deg); }
+.search-multi-value { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-multi-count { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 5px; border-radius: 20px; background: var(--surface); font-size: 0.75rem; color: var(--text); }
+.search-multi-menu { position: absolute; top: calc(100% + 4px); left: 0; right: 0; min-width: 0; z-index: 30; padding: 10px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); box-shadow: 0 8px 22px #00000019; }
+.search-multi-menu > input[type=search] { margin-bottom: 6px; width: 100%; }
+.search-multi-clear { width: 100%; min-height: 38px; padding: 8px; border: 0; text-align: left; border-radius: 7px; background: var(--surface); color: var(--text); cursor: pointer; }
+.search-multi-clear:disabled { opacity: 0.6; cursor: default; }
+.search-multi-options { max-height: 240px; overflow-y: auto; overscroll-behavior: contain; padding-top: 4px; }
+.search-multi-option { display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 8px; cursor: pointer; border-radius: 7px; }
+.search-multi-option:hover { background: var(--surface); }
+.search-multi-option > input[type=checkbox] { flex: none; width: 19px; height: 19px; min-height: 19px; margin: 0; }
+.search-single > select { width: 100%; }
+.time-window-field { min-width: 0; flex: 1 1 160px; margin: 0; }
+.time-window-field > select { width: 100%; }
+.time-search-actions { display: flex; justify-content: flex-end; margin: 4px 0 2px; }
+@media (max-width: 480px) { .time-window-field { flex: 1 1 100%; } }
