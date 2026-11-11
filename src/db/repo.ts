@@ -143,7 +143,7 @@ export async function endRide(
   return d.transaction('rw', d.trips, d.seatEvents, async () => {
     const t = await d.trips.get(id)
     if (!t || t.kind !== 'ride' || !t.ongoing) return undefined
-    return saveTrip({ ...t, ...patch, ongoing: false, alightTime }, undefined, d)
+    return saveTrip({ ...t, ...patch, ongoing: false, alightTime, seatLogComplete: true }, undefined, d)
   })
 }
 
