@@ -1,4 +1,4 @@
-import { orderEvents } from './seat'
+import { isSeatLogComplete, orderEvents } from './seat'
 import { currentSeat } from './seatLog'
 import { diffMinutes, formatDuration, parseHm } from './time'
 import type { SeatEvent, SeatState, Trip } from './types'
@@ -97,7 +97,7 @@ function tickLabel(e: SeatEvent): string {
  *  - 진행 중(provisional)인 탑승은 현재 좌석 상태가 현재 시각까지 이어지는 잠정 구간으로 표시한다.
  */
 export function seatSegments(
-  trip: Pick<Trip, 'boardTime' | 'initialSeat' | 'seatLogComplete'>,
+  trip: Pick<Trip, 'boardTime' | 'initialSeat' | 'seatLogComplete'> & Partial<Pick<Trip, 'kind' | 'ongoing' | 'alightTime'>>,
   ordered: SeatEvent[],
   start: number,
   end: number,
@@ -139,7 +139,7 @@ export function seatSegments(
   if (cursor < end) {
     if (broken) push(cursor, end, 'unknown')
     else if (provisional) push(cursor, end, cur ?? 'unknown', true)
-    else if (trip.seatLogComplete === true) push(cursor, end, cur ?? 'unknown')
+    else if (isSeatLogComplete(trip)) push(cursor, end, cur ?? 'unknown')
     else {
       push(cursor, end, 'unknown')
       if (ordered.length > 0 || trip.initialSeat !== null) notes.push('마지막 좌석 변화 이후 변화가 없다는 확인이 없어 그 구간은 미확인입니다')
