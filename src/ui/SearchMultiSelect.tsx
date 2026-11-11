@@ -23,7 +23,7 @@ export function SearchMultiSelect<T extends string | number>({ label, options, v
     <div className="field search-multi" role="group" aria-label={label}>
       <div className="field-label">{label}</div>
       <details className="search-multi-details">
-        <summary className="search-multi-summary" aria-label={`${label} 선택`}>
+        <summary className="search-multi-summary"><span className="sr-only">{label}: </span>
           <span className="search-multi-value">{summary}</span>
           {selected.length > 0 && <span className="search-multi-count">{selected.length}</span>}
           <ChevronDown size={16} aria-hidden="true" />
