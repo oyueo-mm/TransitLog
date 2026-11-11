@@ -22,7 +22,7 @@ import {
   type SortKey,
   type TimeStep,
 } from '../domain/search'
-import { formatDuration, formatHm, parseDate, parseHm, todayStr, WEEKDAY_NAMES } from '../domain/time'
+import { formatHm, parseDate, parseHm, todayStr, WEEKDAY_NAMES } from '../domain/time'
 import { CROWDING_LABEL, KIND_LABEL, MODE_LABEL, PURPOSE_LABEL, SIDE_LABEL, type Crowding, type Mode, type Purpose, type RecordKind, type SeatEvent, type Side, type Trip } from '../domain/types'
 import { Empty } from './common'
 import { SeatStatus } from './SeatStatus'
