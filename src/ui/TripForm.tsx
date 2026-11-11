@@ -152,7 +152,7 @@ export function TripForm({ value: v, events, onChange, history = [], historyEven
         events,
       ),
   })
-  // 좌석 이벤트·탑승 시 좌석이 달라지면 '기록 완결' 확인은 해제된다 (이전 확인이 부정확하게 남지 않도록)
+  // 좌석 이벤트·탑승 시 좌석 변경 시 과거 수동 확인을 해제한다. 하차 완료 여부는 계산 시 자동 판정한다.
   const withSeat = (nextV: Draft, nextEvents: SeatEventDraft[]) =>
     onChange(
       {
@@ -320,16 +320,6 @@ export function TripForm({ value: v, events, onChange, history = [], historyEven
           >
             + 좌석 변화 추가
           </button>
-          <ChipGroup<'yes' | 'no'>
-            label="좌석 변화 기록이 완결되었나요?"
-            options={[
-              { value: 'yes', label: '예, 더 없음' },
-              { value: 'no', label: '아니오' },
-            ]}
-            value={v.seatLogComplete === null ? null : v.seatLogComplete ? 'yes' : 'no'}
-            onChange={(x) => set('seatLogComplete', x === null ? null : x === 'yes')}
-            hint="'예'일 때만 최종 착석 여부와 서서 이동 시간을 계산합니다. 이벤트나 탑승 시 좌석을 바꾸면 이 확인은 자동으로 해제되니 다시 확인해 주세요."
-          />
         </fieldset>
       )}
 
