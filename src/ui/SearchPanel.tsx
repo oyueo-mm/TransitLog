@@ -22,10 +22,11 @@ import {
   type SortKey,
   type TimeStep,
 } from '../domain/search'
-import { formatDuration, formatHm, parseDate, parseHm, todayStr, WEEKDAY_NAMES } from '../domain/time'
+import { formatHm, parseDate, parseHm, todayStr, WEEKDAY_NAMES } from '../domain/time'
 import { CROWDING_LABEL, KIND_LABEL, MODE_LABEL, PURPOSE_LABEL, SIDE_LABEL, type Crowding, type Mode, type Purpose, type RecordKind, type SeatEvent, type Side, type Trip } from '../domain/types'
 import { Empty } from './common'
 import { SeatStatus } from './SeatStatus'
+import { RideTimes } from './RideTimes'
 import { seatChangePath } from '../domain/seatCard'
 import { formatTrainRoute } from '../domain/stations'
 import { SearchMultiSelect } from './SearchMultiSelect'
@@ -140,7 +141,7 @@ function Highlight({ m }: { m: SearchMatch }) {
   )
 }
 
-function SearchResultCard({ m }: { m: SearchMatch }) {
+function SearchResultCard({ m, showDate }: { m: SearchMatch; showDate: boolean }) {
   const t = m.rec.trip
   const position = [t.car !== null ? `${t.car}칸` : null, t.door !== null ? `${t.door}문` : null].filter(Boolean).join(' · ')
   const seatPath = seatChangePath(t, m.rec.events)
@@ -153,11 +154,7 @@ function SearchResultCard({ m }: { m: SearchMatch }) {
       <div className="search-card-route">
         <strong>{t.boardPlace ?? '승차역 미기록'} → {t.alightPlace ?? '하차역 미기록'}</strong>
       </div>
-      <div className="search-card-head">
-        <strong className="search-card-time">{t.boardTime ?? '--:--'}</strong>
-        <span className="muted small">{t.date}</span>
-        {m.rec.duration !== null && <span className="search-card-duration">{formatDuration(m.rec.duration)}</span>}
-      </div>
+      <RideTimes trip={t} showDate={showDate} />
       {formatTrainRoute(t.trainOrigin, t.trainDestination) && <div className="muted small">{formatTrainRoute(t.trainOrigin, t.trainDestination)}</div>}
       {seatPath && <div className="seat-change-path">{seatPath}</div>}
       {(position || t.purpose || t.crowding) && <div className="muted small">{[position, t.purpose ? PURPOSE_LABEL[t.purpose] : null, t.crowding ? CROWDING_LABEL[t.crowding] : null].filter(Boolean).join(' · ')}</div>}
@@ -385,7 +382,7 @@ export function SearchPanel({ trips, events }: { trips: Trip[]; events: SeatEven
         />
         <Single<SeatChange>
           label="탑승 중 좌석 변화"
-          options={[{ value: 'midSeat', label: '중간 착석함' }, { value: 'stoodAll', label: '끝까지 서 있었음(확인)' }, { value: 'seatedAll', label: '끝까지 앉아 있었음(확인)' }, { value: 'unconfirmed', label: '변화 기록 없음·미확인' }]}
+          options={[{ value: 'midSeat', label: '중간 착석함' }, { value: 'stoodAll', label: '끝까지 서서 이동' }, { value: 'seatedAll', label: '끝까지 앉아서 이동' }, { value: 'unconfirmed', label: '변화 기록 없음·미확인' }]}
           values={filters.seatChange} onChange={(seatChange) => set({ seatChange })}
         />
 
@@ -398,7 +395,7 @@ export function SearchPanel({ trips, events }: { trips: Trip[]; events: SeatEven
             ]}
             values={filters.seatFinal}
             onChange={(seatFinal) => set({ seatFinal })}
-            hint="하차 완료된 탑승은 마지막 좌석 상태로 판정하고, 하차 여부가 불확실하면 미확인으로 둡니다."
+            hint="종료된 탑승은 마지막 기록 좌석 상태가 하차까지 유지된 것으로 봅니다. 진행 중이거나 좌석 정보가 없으면 미확인입니다."
           />
 
           <Single<number> label="칸" options={sug.cars.map((v) => ({ value: v, label: `${v}칸` }))} values={filters.cars} onChange={(cars) => set({ cars })} />
@@ -462,7 +459,7 @@ export function SearchPanel({ trips, events }: { trips: Trip[]; events: SeatEven
               <span className="muted small"> · {list.length}건</span>
             </h3>
             <div className="search-result-list">
-              {list.map((m) => <div key={m.rec.trip.id} className="result-item" data-trip-id={m.rec.trip.id}><SearchResultCard m={m} /></div>)}
+              {list.map((m) => <div key={m.rec.trip.id} className="result-item" data-trip-id={m.rec.trip.id}><SearchResultCard m={m} showDate={group !== 'date'} /></div>)}
             </div>
           </div>
         ))

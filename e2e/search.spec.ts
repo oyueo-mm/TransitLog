@@ -39,6 +39,28 @@ const multi = async (page: Page, group: string, label: string | RegExp) => {
 }
 
 test.describe('고급 검색', () => {
+  test('종료된 탑승의 착석 상태·실제 승하차 시각은 날짜별/목록/날짜 화면에서 일치한다', async ({ page }) => {
+    const a = fakeTrip({ date: '2026-10-19', line: '1호선', boardPlace: '신도림역', alightPlace: '수원역', initialSeat: 'seated', ongoing: false, boardTime: '21:07', alightTime: null, reportedDurationMin: 45 })
+    const b = fakeTrip({ date: '2026-10-15', line: '1호선', boardPlace: '신도림역', alightPlace: '수원역', initialSeat: 'standing', ongoing: false, boardTime: '21:54', alightTime: null })
+    await restoreBackup(page, { trips: [a, b] })
+    await openSearch(page)
+    const seated = page.locator(`[data-trip-id="${a.id}"]`)
+    const standing = page.locator(`[data-trip-id="${b.id}"]`)
+    await expect(seated.getByTestId('seat-status')).toContainText('처음부터 착석')
+    await expect(seated.getByTestId('ride-times')).toContainText('승차 21:07')
+    await expect(seated.getByTestId('ride-times')).toContainText('하차 시각 미기록')
+    await expect(seated.getByTestId('ride-times')).toContainText('45분 (소요 시간만 기록)')
+    await expect(seated.getByTestId('ride-times')).not.toContainText('2026-10-19')
+    await expect(standing.getByTestId('seat-status')).toContainText('끝까지 서서 이동')
+    await expect(standing).not.toContainText('이후 미확인')
+    await page.getByRole('group', { name: '결과 묶음' }).getByRole('button', { name: '목록' }).click()
+    await expect(seated.getByTestId('ride-times')).toContainText('2026-10-19')
+    await gotoApp(page, 'day/2026-10-15')
+    const dayCard = page.locator('.timeline .card', { hasText: '신도림역' }).first()
+    await expect(dayCard.getByTestId('seat-status')).toContainText('끝까지 서서 이동')
+    await expect(dayCard.getByTestId('ride-times')).toContainText('하차 시각 미기록')
+  })
+
   test('키워드: 공백 무시·여러 단어 AND·역 이름 정규화·동의어·좌석 이벤트', async ({ page }) => {
     await restoreBackup(page, seed())
     await openSearch(page)
@@ -96,11 +118,11 @@ test.describe('고급 검색', () => {
     await expect(cards(page)).toHaveCount(4)
   })
 
-  test('좌석 조건: 끝까지 서 있었음(확인)·최종 미확인, 지연, 소요 시간', async ({ page }) => {
+  test('좌석 조건: 끝까지 서서 이동·최종 미확인, 지연, 소요 시간', async ({ page }) => {
     await restoreBackup(page, seed())
     await openSearch(page)
     await advanced(page)
-    await single(page, '탑승 중 좌석 변화', /끝까지 서 있었음/)
+    await single(page, '탑승 중 좌석 변화', '끝까지 서서 이동')
     await expect(cards(page)).toHaveCount(1)
     await expect(cards(page).first()).toContainText('신호 대기')
     await page.getByRole('button', { name: /조건 초기화/ }).click()

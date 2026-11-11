@@ -384,7 +384,7 @@ test.describe('기존 데이터 호환', () => {
     await gotoApp(page, 'stats')
     const metric = (n: string) => page.locator('.metrics > div', { hasText: n })
     await expect(metric('즉시 착석률')).toContainText('(1/3)') // 앉아서 1 / 좌석 기록 3
-    await expect(metric('한 번이라도 착석한 비율')).toContainText('(2/2)') // a(중간 착석), b(앉아서) — c 는 변화 미확인이라 제외
+    await expect(metric('한 번이라도 착석한 비율')).toContainText('(2/3)') // a(중간 착석), b(앉아서), c(종료된 서서 탑승)
     await expect(metric('서서 탄 뒤 착석까지 평균')).toContainText('10분')
 
     // 수정 화면도 열리고 값이 유지된다

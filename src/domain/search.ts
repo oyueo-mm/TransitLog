@@ -28,7 +28,7 @@ import {
 
 export type QuickRange = 'all' | 'today' | 'week' | 'month' | '30' | '90' | 'custom'
 export type SeatInitial = 'seated' | 'standing' | 'unrecorded'
-/** 탑승 중 좌석 변화: 중간 착석함 / 끝까지 서 있었음(확인) / 끝까지 앉아 있었음(확인) / 변화 기록 없음·완결 미확인 */
+/** 탑승 중 좌석 변화: 중간 착석함 / 끝까지 서서 이동 / 끝까지 앉아서 이동 / 변화 기록 없음·미확인 */
 export type SeatChange = 'midSeat' | 'stoodAll' | 'seatedAll' | 'unconfirmed'
 export type SeatFinal = 'seated' | 'standing' | 'unknown'
 /** 검색 화면의 통합 좌석 상태: 같은 항목 내에서는 OR, 다른 검색 조건과는 AND */

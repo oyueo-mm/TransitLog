@@ -2,10 +2,11 @@ import { type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { formatTrainRoute } from '../domain/stations'
 import { clearToast, type ToastState } from './hooks'
-import { diffMinutes, formatDuration } from '../domain/time'
-import { summarizeSeat, tripDuration } from '../domain/seat'
+import { diffMinutes } from '../domain/time'
+import { summarizeSeat } from '../domain/seat'
 import { seatChangePath } from '../domain/seatCard'
 import { SeatStatus } from './SeatStatus'
+import { RideTimes } from './RideTimes'
 import {
   BUS_DOOR_LABEL,
   CROWDING_LABEL,
@@ -112,8 +113,6 @@ export function seatText(trip: Trip, events: SeatEvent[]): string[] {
 
 export function TripCard(props: { trip: Trip; events: SeatEvent[]; to?: string; linkState?: unknown }) {
   const { trip: t, events } = props
-  const ongoing = t.kind === 'ride' && t.ongoing
-  const dur = tripDuration(t)
   const pos: string[] = []
   if (t.mode === 'subway') {
     if (t.car !== null || t.door !== null) pos.push(`${t.car ?? '?'}-${t.door ?? '?'}`)
@@ -137,12 +136,7 @@ export function TripCard(props: { trip: Trip; events: SeatEvent[]; to?: string; 
         </div>
       )}
       <div className="card-time-meta">
-        <div className="time">
-          {t.boardTime ?? '--:--'}
-          {(t.alightTime || ongoing) && <span className="arrow"> → </span>}
-          {ongoing ? <span className="live">탑승 중</span> : t.alightTime}
-          {dur !== null && <span className="dur">{formatDuration(dur)}</span>}
-        </div>
+        <RideTimes trip={t} />
         <div className="badges">
           {t.purpose && <span className="badge">{PURPOSE_LABEL[t.purpose]}</span>}
           <span className="badge mode">{MODE_LABEL[t.mode]}</span>

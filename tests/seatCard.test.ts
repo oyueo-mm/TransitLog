@@ -15,14 +15,19 @@ describe('카드의 착석 상태 강조', () => {
     const t = mkTrip({ initialSeat: 'standing', boardTime: '08:00', alightTime: '09:00' })
     expect(seatCardInfo(t, [mkEvent(t.id, { time: null, state: 'seated' })])).toMatchObject({ label: '중간 착석', detail: '착석 소요 시간 미확인' })
   })
-  it('서서 시작했어도 이후를 확인하지 않았다면 끝까지 서 있었다고 하지 않는다', () => {
-    const t = mkTrip({ initialSeat: 'standing', boardTime: '08:00', alightTime: null, seatLogComplete: null })
-    expect(seatCardInfo(t, [])).toMatchObject({ label: '서서 탑승 · 이후 미확인', tone: 'unknown' })
+  it('종료된 서서 탑승은 하차 시각이 없어도 끝까지 서서 이동으로 표시한다', () => {
+    const t = mkTrip({ initialSeat: 'standing', boardTime: '21:54', alightTime: null, ongoing: false, seatLogComplete: null })
+    expect(seatCardInfo(t, [])).toMatchObject({ label: '끝까지 서서 이동', tone: 'standing' })
   })
   it('하차가 확인된 기록만 끝까지 서 있었다고 표시한다', () => {
     const t = mkTrip({ initialSeat: 'standing', boardTime: '08:00', alightTime: '09:00', ongoing: false })
     expect(seatCardInfo(t, [])).toMatchObject({ label: '끝까지 서서 이동', tone: 'standing' })
   })
+  it('처음부터 착석한 뒤 일어섰다면 중간 기립으로 표시한다', () => {
+    const t = mkTrip({ initialSeat: 'seated', ongoing: false })
+    expect(seatCardInfo(t, [mkEvent(t.id, { state: 'standing' })])).toMatchObject({ label: '중간 기립', tone: 'standing' })
+  })
+
   it('탑승 중에는 최종 결과 대신 현재 좌석을 보여준다', () => {
     const t = mkTrip({ initialSeat: 'standing', ongoing: true, boardTime: '08:00' })
     const events = [mkEvent(t.id, { time: '08:10', state: 'seated' })]
