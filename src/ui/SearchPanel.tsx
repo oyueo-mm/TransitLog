@@ -25,6 +25,8 @@ import {
 import { formatDuration, formatHm, parseDate, parseHm, todayStr, WEEKDAY_NAMES } from '../domain/time'
 import { CROWDING_LABEL, KIND_LABEL, MODE_LABEL, PURPOSE_LABEL, SIDE_LABEL, type Crowding, type Mode, type Purpose, type RecordKind, type SeatEvent, type Side, type Trip } from '../domain/types'
 import { Empty } from './common'
+import { SeatStatus } from './SeatStatus'
+import { seatChangePath } from '../domain/seatCard'
 import { formatTrainRoute } from '../domain/stations'
 import { SearchMultiSelect } from './SearchMultiSelect'
 import { CollapsedTimeInput } from './CollapsedTimeInput'
@@ -140,27 +142,24 @@ function Highlight({ m }: { m: SearchMatch }) {
 
 function SearchResultCard({ m }: { m: SearchMatch }) {
   const t = m.rec.trip
-  const seat = m.rec.facts.summary
-  const seatLabel = t.kind !== 'ride' ? KIND_LABEL[t.kind] :
-    t.initialSeat === 'seated' ? '처음부터 착석' :
-    t.initialSeat === 'standing' && seat.minutesToFirstSeat !== null ? `서서 탑승 → ${formatDuration(seat.minutesToFirstSeat)} 후 착석` :
-    seat.everSeated === true ? '중간 착석 기록' :
-    seat.everSeated === false ? '끝까지 서서 이동' :
-    t.initialSeat === 'standing' ? '서서 탑승 · 이후 미확인' : '좌석 미기록'
   const position = [t.car !== null ? `${t.car}칸` : null, t.door !== null ? `${t.door}문` : null].filter(Boolean).join(' · ')
+  const seatPath = seatChangePath(t, m.rec.events)
   return (
     <Link className="card search-card" to={`/trip/${t.id}`} state={{ from: '/calendar' }}>
+      <div className="card-summary">
+        <strong className="card-line">{t.line ?? (t.mode === 'subway' ? '지하철' : '버스')}</strong>
+        {t.kind === 'ride' ? <SeatStatus trip={t} events={m.rec.events} summary={m.rec.facts.summary} /> : <span className={`badge kind-${t.kind}`}>{KIND_LABEL[t.kind]}</span>}
+      </div>
+      <div className="search-card-route">
+        <strong>{t.boardPlace ?? '승차역 미기록'} → {t.alightPlace ?? '하차역 미기록'}</strong>
+      </div>
       <div className="search-card-head">
         <strong className="search-card-time">{t.boardTime ?? '--:--'}</strong>
         <span className="muted small">{t.date}</span>
         {m.rec.duration !== null && <span className="search-card-duration">{formatDuration(m.rec.duration)}</span>}
       </div>
-      <div className="search-card-route">
-        <span className="badge mode">{t.line ?? (t.mode === 'subway' ? '지하철' : '버스')}</span>
-        <strong>{t.boardPlace ?? '승차역 미기록'} → {t.alightPlace ?? '하차역 미기록'}</strong>
-      </div>
       {formatTrainRoute(t.trainOrigin, t.trainDestination) && <div className="muted small">{formatTrainRoute(t.trainOrigin, t.trainDestination)}</div>}
-      <div className="search-card-seat">{seatLabel}</div>
+      {seatPath && <div className="seat-change-path">{seatPath}</div>}
       {(position || t.purpose || t.crowding) && <div className="muted small">{[position, t.purpose ? PURPOSE_LABEL[t.purpose] : null, t.crowding ? CROWDING_LABEL[t.crowding] : null].filter(Boolean).join(' · ')}</div>}
       {(t.incident || (t.delayMinutes ?? 0) > 0) && <div className="card-sub warn">{[t.incident, t.delayMinutes ? `${t.delayMinutes}분 지연` : ''].filter(Boolean).join(' · ')}</div>}
       {t.note && <div className="card-note search-card-note">{t.note}</div>}
