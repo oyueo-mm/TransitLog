@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { ChevronDown, ChevronUp, Clock3, X } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
@@ -24,9 +24,9 @@ import {
 } from '../domain/search'
 import { formatDuration, formatHm, parseDate, parseHm, todayStr, WEEKDAY_NAMES } from '../domain/time'
 import { CROWDING_LABEL, KIND_LABEL, MODE_LABEL, PURPOSE_LABEL, SIDE_LABEL, type Crowding, type Mode, type Purpose, type RecordKind, type SeatEvent, type Side, type Trip } from '../domain/types'
-import { Chip, Empty } from './common'
+import { Empty } from './common'
 import { formatTrainRoute } from '../domain/stations'
-import { TagPicker } from './TagPicker'
+import { SearchMultiSelect } from './SearchMultiSelect'
 import { CollapsedTimeInput } from './CollapsedTimeInput'
 
 const PAGE = 30
@@ -41,6 +41,7 @@ interface Saved {
   group: 'date' | 'time' | 'none'
   step: TimeStep
   center: string
+  windowSize: number | null
 }
 
 function load(): Saved {
@@ -56,12 +57,13 @@ function load(): Saved {
         group: raw.group === 'time' || raw.group === 'none' ? raw.group : 'date',
         step: ([5, 10, 15, 30, 60] as number[]).includes(raw.step as number) ? raw.step as TimeStep : 15,
         center: typeof raw.center === 'string' && parseHm(raw.center) !== null ? raw.center : '08:00',
+        windowSize: [5, 10, 15, 20, 30, 60, 120].includes(raw.windowSize as number) ? raw.windowSize as number : null,
       }
     }
   } catch {
     /* 저장소를 쓸 수 없으면 기본값으로 시작 */
   }
-  return { filters: EMPTY_FILTERS, sort: 'newest', shown: PAGE, open: false, scrollY: 0, group: 'date', step: 15, center: '08:00' }
+  return { filters: EMPTY_FILTERS, sort: 'newest', shown: PAGE, open: false, scrollY: 0, group: 'date', step: 15, center: '08:00', windowSize: null }
 }
 
 function save(s: Saved) {
@@ -72,25 +74,22 @@ function save(s: Saved) {
   }
 }
 
-const toggle = <T,>(arr: T[], v: T): T[] => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v])
-
-function Multi<T extends string | number>({ label, options, values, onChange, hint }: { label: string; options: Array<{ value: T; label: string }>; values: T[]; onChange: (v: T[]) => void; hint?: string }) {
-  if (options.length === 0) return null
+function Single<T extends string | number>({ label, options, values, onChange, hint }: { label: string; options: Array<{ value: T; label: string }>; values: T[]; onChange: (v: T[]) => void; hint?: string }) {
+  const id = useId()
   return (
-    <div className="field" role="group" aria-label={label}>
-      <div className="field-label">{label}</div>
-      <div className="chips">
-        {options.map((o) => (
-          <Chip key={String(o.value)} value={o.value} selected={values.includes(o.value)} onSelect={(v) => onChange(toggle(values, v))} small>
-            {o.label}
-          </Chip>
-        ))}
-      </div>
+    <div className="field search-single" role="group" aria-label={label}>
+      <label className="field-label" htmlFor={id}>{label}</label>
+      <select id={id} aria-label={label} value={values[0] === undefined ? '' : String(values[0])} onChange={(event) => {
+        const found = options.find((option) => String(option.value) === event.target.value)
+        onChange(found ? [found.value] : [])
+      }}>
+        <option value="">전체</option>
+        {options.map((option) => <option key={String(option.value)} value={String(option.value)}>{option.label}</option>)}
+      </select>
       {hint && <div className="hint">{hint}</div>}
     </div>
   )
 }
-
 function Range({ label, from, to, onChange, kind }: { label: string; from: string | null; to: string | null; onChange: (a: string | null, b: string | null) => void; kind: 'time' | 'date' }) {
   if (kind === 'time') {
     return (
@@ -197,6 +196,7 @@ export function SearchPanel({ trips, events }: { trips: Trip[]; events: SeatEven
       },
       shown: PAGE,
       scrollY: 0,
+      windowSize: null,
     }
   })
   const [filters, setFilters] = useState<SearchFilters>(init.filters)
@@ -206,6 +206,7 @@ export function SearchPanel({ trips, events }: { trips: Trip[]; events: SeatEven
   const [group, setGroup] = useState(init.group)
   const [step, setStep] = useState<TimeStep>(init.step)
   const [center, setCenter] = useState(init.center)
+  const [windowSize, setWindowSize] = useState<number | null>(init.windowSize)
   const scrollRef = useRef(init.scrollY)
   const restored = useRef(false)
 
@@ -216,15 +217,15 @@ export function SearchPanel({ trips, events }: { trips: Trip[]; events: SeatEven
 
   // 상태와 스크롤 위치를 보관해 상세 화면에서 돌아와도 그대로 보이게 한다
   useEffect(() => {
-    save({ filters, sort, shown, open, scrollY: scrollRef.current, group, step, center })
-  }, [filters, sort, shown, open, group, step, center])
+    save({ filters, sort, shown, open, scrollY: scrollRef.current, group, step, center, windowSize })
+  }, [filters, sort, shown, open, group, step, center, windowSize])
   useEffect(() => {
     let t: number | undefined
     const onScroll = () => {
       window.clearTimeout(t)
       t = window.setTimeout(() => {
         scrollRef.current = window.scrollY
-        save({ filters, sort, shown, open, scrollY: window.scrollY, group, step, center })
+        save({ filters, sort, shown, open, scrollY: window.scrollY, group, step, center, windowSize })
       }, 120)
     }
     window.addEventListener('scroll', onScroll, { passive: true })
@@ -232,7 +233,7 @@ export function SearchPanel({ trips, events }: { trips: Trip[]; events: SeatEven
       window.removeEventListener('scroll', onScroll)
       window.clearTimeout(t)
     }
-  }, [filters, sort, shown, open, group, step, center])
+  }, [filters, sort, shown, open, group, step, center, windowSize])
 
   const today = todayStr()
   const records = useMemo(() => toRecords(trips, events), [trips, events])
@@ -253,7 +254,6 @@ export function SearchPanel({ trips, events }: { trips: Trip[]; events: SeatEven
       lines: suggestionsFrom(trips.map((t) => t.line)),
       board: suggestionsFrom(trips.map((t) => t.boardPlace)),
       alight: suggestionsFrom(trips.map((t) => t.alightPlace)),
-      dest: suggestionsFrom(trips.map((t) => t.trainDestination)),
       origin: suggestionsFrom(trips.map((t) => t.trainOrigin)),
       cars: distinct(trips.map((t) => t.car)),
       doors: distinct(trips.map((t) => t.door)),
@@ -268,6 +268,7 @@ export function SearchPanel({ trips, events }: { trips: Trip[]; events: SeatEven
     setFilters(EMPTY_FILTERS)
     setShown(PAGE)
     setSort('newest')
+    setWindowSize(null)
   }
   const quick: Array<[QuickRange, string]> = [
     ['all', '전체'],
@@ -279,17 +280,27 @@ export function SearchPanel({ trips, events }: { trips: Trip[]; events: SeatEven
     ['custom', '직접 지정'],
   ]
   const noDur = matches.filter((m) => m.rec.duration === null).length
-  const applyTimeWindow = (minutes: number) => {
-    const centerMinutes = parseHm(center)
-    if (centerMinutes === null) return
-    set({ boardFrom: formatHm(centerMinutes - minutes), boardTo: formatHm(centerMinutes + minutes) })
+  const applyTimeWindow = (value: string) => {
+    const minutes = Number(value)
+    if (![5, 10, 15, 20, 30, 60, 120].includes(minutes)) { setWindowSize(null); return }
+    const c = parseHm(center)
+    if (c === null) return
+    setWindowSize(minutes)
+    set({ boardFrom: formatHm(c - minutes), boardTo: formatHm(c + minutes) })
+  }
+  const changeCenter = (value: string | null) => {
+    if (!value) return
+    setCenter(value)
+    const c = parseHm(value)
+    if (windowSize !== null && c !== null) set({ boardFrom: formatHm(c - windowSize), boardTo: formatHm(c + windowSize) })
   }
   const timeActive = filters.boardFrom !== null || filters.boardTo !== null
   const activeLabels = [
     ...filters.lines.map((v) => ({ label: v, clear: () => set({ lines: filters.lines.filter((x) => x !== v) }) })),
     ...filters.boardStations.map((v) => ({ label: `승차 ${v}`, clear: () => set({ boardStations: filters.boardStations.filter((x) => x !== v) }) })),
-    ...filters.destinations.map((v) => ({ label: `행선지 ${v}`, clear: () => set({ destinations: filters.destinations.filter((x) => x !== v) }) })),
+    ...filters.alightStations.map((v) => ({ label: `하차 ${v}`, clear: () => set({ alightStations: filters.alightStations.filter((x) => x !== v) }) })),
     ...filters.seatOutcome.map((v) => ({ label: ({ initial: '처음부터 착석', mid: '중간 착석', ever: '한 번이라도 착석', stoodAll: '끝까지 서 있었음', unknown: '착석 여부 미확인' })[v], clear: () => set({ seatOutcome: filters.seatOutcome.filter((x) => x !== v) }) })),
+    ...filters.weekdays.map((v) => ({ label: `${WEEKDAY_NAMES[v]}요일`, clear: () => set({ weekdays: filters.weekdays.filter((x) => x !== v) }) })),
     ...filters.seatInitial.map((v) => ({ label: v === 'standing' ? '서서 탑승' : v === 'seated' ? '처음부터 착석' : '좌석 미기록', clear: () => set({ seatInitial: filters.seatInitial.filter((x) => x !== v) }) })),
     ...(timeActive ? [{ label: `승차 ${filters.boardFrom ?? '00:00'}~${filters.boardTo ?? '23:59'}`, clear: () => set({ boardFrom: null, boardTo: null }) }] : []),
   ]
@@ -298,41 +309,30 @@ export function SearchPanel({ trips, events }: { trips: Trip[]; events: SeatEven
     <div data-testid="search-panel">
       <div className="time-search-panel">
         <div className="field-label"><Clock3 size={16} className="inline-icon" /> 탑승 시간</div>
-        <Range label="승차 시각" kind="time" from={filters.boardFrom} to={filters.boardTo} onChange={(a, b) => set({ boardFrom: a, boardTo: b })} />
-        <div className="chips filter" role="group" aria-label="시간 빠른 선택">
-          <Chip value="morning" selected={filters.boardFrom === '06:00' && filters.boardTo === '10:00'} onSelect={() => set({ boardFrom: '06:00', boardTo: '10:00' })} small>아침 06~10시</Chip>
-          <Chip value="evening" selected={filters.boardFrom === '16:00' && filters.boardTo === '21:00'} onSelect={() => set({ boardFrom: '16:00', boardTo: '21:00' })} small>저녁 16~21시</Chip>
-          <button type="button" className="btn-small" onClick={() => set({ boardFrom: null, boardTo: null })} disabled={!timeActive}>시간 초기화</button>
-        </div>
+        <Range label="승차 시각" kind="time" from={filters.boardFrom} to={filters.boardTo} onChange={(a, b) => { setWindowSize(null); set({ boardFrom: a, boardTo: b }) }} />
         <div className="time-center-row">
-          <CollapsedTimeInput label="기준 시각" value={center} onChange={(v) => { if (v) setCenter(v) }} clearable={false} />
-          <div className="chips" role="group" aria-label="기준 시각 전후 검색">
-            {([5, 10, 15] as const).map((minutes) => <button type="button" key={minutes} className="chip is-small" onClick={() => applyTimeWindow(minutes)}>±{minutes}분</button>)}
+          <CollapsedTimeInput label="기준 시각" value={center} onChange={changeCenter} clearable={false} />
+          <div className="field time-window-field">
+            <label className="field-label" htmlFor="board-window">기준 시각 검색 범위</label>
+            <select id="board-window" aria-label="기준 시각 검색 범위" value={windowSize ?? ''} onChange={(event) => applyTimeWindow(event.target.value)}>
+              <option value="">범위 선택</option>
+              {([5, 10, 15, 20, 30, 60, 120] as const).map((minutes) => <option value={minutes} key={minutes}>{minutes >= 60 ? `±${minutes / 60}시간` : `±${minutes}분`}</option>)}
+            </select>
           </div>
         </div>
+        <div className="time-search-actions"><button type="button" className="btn-small" onClick={() => { setWindowSize(null); set({ boardFrom: null, boardTo: null }) }} disabled={!timeActive}>시간 초기화</button></div>
         <p className="hint">시간은 실제 탑승 시각 기준입니다. 자정을 넘는 범위도 검색할 수 있습니다.</p>
       </div>
-      <div className="chips filter" role="group" aria-label="날짜">
-        {quick.map(([v, l]) => <Chip key={v} value={v} selected={filters.quick === v} onSelect={(q) => set({ quick: q })} small>{l}</Chip>)}
-      </div>
-      {filters.quick === 'custom' && <Range label="날짜 범위" kind="date" from={filters.dateFrom} to={filters.dateTo} onChange={(a, b) => set({ dateFrom: a, dateTo: b })} />}
       <div className="search-primary">
-        <TagPicker label="노선·버스 번호" values={filters.lines} suggestions={sug.lines} onChange={(lines) => set({ lines })} />
-        <TagPicker label="승차역" values={filters.boardStations} suggestions={sug.board} onChange={(boardStations) => set({ boardStations })} />
-        <TagPicker label="열차 행선지" values={filters.destinations} suggestions={sug.dest} onChange={(destinations) => set({ destinations })} />
-        <Multi<number> label="요일" options={WEEKDAY_NAMES.map((w, i) => ({ value: i, label: w }))} values={filters.weekdays} onChange={(weekdays) => set({ weekdays })} />
-        <Multi<SeatOutcome>
-          label="좌석 상태"
-          options={[
-            { value: 'initial', label: '처음부터 착석' },
-            { value: 'mid', label: '중간 착석' },
-            { value: 'ever', label: '한 번이라도 착석' },
-            { value: 'stoodAll', label: '끝까지 서 있었음' },
-            { value: 'unknown', label: '착석 여부 미확인' },
-          ]}
-          values={filters.seatOutcome} onChange={(seatOutcome) => set({ seatOutcome })}
-          hint="여러 좌석 상태를 고르면 하나라도 일치하는 기록을 보여 줍니다."
-        />
+        <SearchMultiSelect<SeatOutcome> label="좌석 상태" options={[
+          { value: 'initial', label: '처음부터 착석' }, { value: 'mid', label: '중간 착석' },
+          { value: 'ever', label: '한 번이라도 착석' }, { value: 'stoodAll', label: '끝까지 서 있었음' },
+          { value: 'unknown', label: '착석 여부 미확인' },
+        ]} values={filters.seatOutcome} onChange={(seatOutcome) => set({ seatOutcome })} />
+        <SearchMultiSelect label="노선·버스 번호" options={sug.lines.map((value) => ({ value, label: value }))} values={filters.lines} onChange={(lines) => set({ lines })} searchable />
+        <SearchMultiSelect label="승차역" options={sug.board.map((value) => ({ value, label: value }))} values={filters.boardStations} onChange={(boardStations) => set({ boardStations })} searchable />
+        <SearchMultiSelect label="하차역" options={sug.alight.map((value) => ({ value, label: value }))} values={filters.alightStations} onChange={(alightStations) => set({ alightStations })} searchable />
+        <SearchMultiSelect<number> label="요일" options={WEEKDAY_NAMES.map((value, i) => ({ value: i, label: `${value}요일` }))} values={filters.weekdays} onChange={(weekdays) => set({ weekdays })} />
       </div>
       {activeLabels.length > 0 && <div className="chips active-search-filters" aria-label="적용 중인 주요 조건">
         {activeLabels.map((item, i) => <button type="button" className="chip is-on is-small" key={i} onClick={item.clear}>{item.label} <X size={12} className="inline-icon" /></button>)}
@@ -350,16 +350,22 @@ export function SearchPanel({ trips, events }: { trips: Trip[]; events: SeatEven
       {open && (
         <div id="adv-filters" className="adv" data-testid="adv-filters">
           <div className="field">
+            <label className="field-label" htmlFor="date-quick">날짜·기간</label>
+            <select id="date-quick" aria-label="날짜·기간" value={filters.quick} onChange={(e) => set({ quick: e.target.value as QuickRange })}>
+              {quick.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+            {filters.quick === 'custom' && <Range label="날짜 범위" kind="date" from={filters.dateFrom} to={filters.dateTo} onChange={(a, b) => set({ dateFrom: a, dateTo: b })} />}
+          </div>
+          <div className="field">
             <label className="field-label" htmlFor="q">키워드 검색</label>
             <input id="q" type="search" aria-label="검색" placeholder="노선·역·칸-문(10-3)·착석·메모" value={filters.q} onChange={(e) => set({ q: e.target.value })} />
             <div className="hint">여러 단어는 모두 일치해야 합니다. 좌석 변화 이벤트의 시각·역·메모도 검색합니다.</div>
           </div>
-          <Multi<Mode> label="교통수단" options={(Object.keys(MODE_LABEL) as Mode[]).map((v) => ({ value: v, label: MODE_LABEL[v] }))} values={filters.modes} onChange={(modes) => set({ modes })} />
-          <Multi<RecordKind> label="기록 종류" options={(Object.keys(KIND_LABEL) as RecordKind[]).map((v) => ({ value: v, label: KIND_LABEL[v] }))} values={filters.kinds} onChange={(kinds) => set({ kinds })} />
-          <Multi<Purpose> label="목적" options={(Object.keys(PURPOSE_LABEL) as Purpose[]).map((v) => ({ value: v, label: PURPOSE_LABEL[v] }))} values={filters.purposes} onChange={(purposes) => set({ purposes })} />
+          <Single<Mode> label="교통수단" options={(Object.keys(MODE_LABEL) as Mode[]).map((v) => ({ value: v, label: MODE_LABEL[v] }))} values={filters.modes} onChange={(modes) => set({ modes })} />
+          <Single<RecordKind> label="기록 종류" options={(Object.keys(KIND_LABEL) as RecordKind[]).map((v) => ({ value: v, label: KIND_LABEL[v] }))} values={filters.kinds} onChange={(kinds) => set({ kinds })} />
+          <Single<Purpose> label="목적" options={(Object.keys(PURPOSE_LABEL) as Purpose[]).map((v) => ({ value: v, label: PURPOSE_LABEL[v] }))} values={filters.purposes} onChange={(purposes) => set({ purposes })} />
 
-          <TagPicker label="하차역" values={filters.alightStations} suggestions={sug.alight} onChange={(alightStations) => set({ alightStations })} />
-          <TagPicker label="열차 출발지" values={filters.origins} suggestions={sug.origin} onChange={(origins) => set({ origins })} />
+          <Single<string> label="열차 출발지" options={sug.origin.map((value) => ({ value, label: value }))} values={filters.origins} onChange={(origins) => set({ origins })} />
 
           <Range label="하차 시각" kind="time" from={filters.alightFrom} to={filters.alightTo} onChange={(a, b) => set({ alightFrom: a, alightTo: b })} />
           <div className="field" role="group" aria-label="소요 시간">
@@ -373,18 +379,18 @@ export function SearchPanel({ trips, events }: { trips: Trip[]; events: SeatEven
             </div>
           </div>
 
-        <Multi<SeatInitial>
+        <Single<SeatInitial>
           label="탑승 시 좌석"
           options={[{ value: 'seated', label: '처음부터 앉아서' }, { value: 'standing', label: '서서 탑승' }, { value: 'unrecorded', label: '미기록' }]}
           values={filters.seatInitial} onChange={(seatInitial) => set({ seatInitial })}
         />
-        <Multi<SeatChange>
+        <Single<SeatChange>
           label="탑승 중 좌석 변화"
           options={[{ value: 'midSeat', label: '중간 착석함' }, { value: 'stoodAll', label: '끝까지 서 있었음(확인)' }, { value: 'seatedAll', label: '끝까지 앉아 있었음(확인)' }, { value: 'unconfirmed', label: '변화 기록 없음·미확인' }]}
           values={filters.seatChange} onChange={(seatChange) => set({ seatChange })}
         />
 
-          <Multi<SeatFinal>
+          <Single<SeatFinal>
             label="최종 좌석 상태"
             options={[
               { value: 'seated', label: '앉음' },
@@ -396,12 +402,12 @@ export function SearchPanel({ trips, events }: { trips: Trip[]; events: SeatEven
             hint="하차 완료된 탑승은 마지막 좌석 상태로 판정하고, 하차 여부가 불확실하면 미확인으로 둡니다."
           />
 
-          <Multi<number> label="칸" options={sug.cars.map((v) => ({ value: v, label: `${v}칸` }))} values={filters.cars} onChange={(cars) => set({ cars })} />
-          <Multi<number> label="문" options={sug.doors.map((v) => ({ value: v, label: `${v}문` }))} values={filters.doors} onChange={(doors) => set({ doors })} />
-          <Multi<Side> label="좌우" options={sug.sides.map((v) => ({ value: v, label: SIDE_LABEL[v] }))} values={filters.sides} onChange={(sides) => set({ sides })} />
-          <Multi<number> label="대기 순서" options={sug.waits.map((v) => ({ value: v, label: `${v}번째` }))} values={filters.waitOrders} onChange={(waitOrders) => set({ waitOrders })} />
-          <Multi<Crowding> label="혼잡도" options={(Object.keys(CROWDING_LABEL) as Crowding[]).map((v) => ({ value: v, label: CROWDING_LABEL[v] }))} values={filters.crowding} onChange={(crowding) => set({ crowding })} />
-          <Multi<DelayFilter>
+          <Single<number> label="칸" options={sug.cars.map((v) => ({ value: v, label: `${v}칸` }))} values={filters.cars} onChange={(cars) => set({ cars })} />
+          <Single<number> label="문" options={sug.doors.map((v) => ({ value: v, label: `${v}문` }))} values={filters.doors} onChange={(doors) => set({ doors })} />
+          <Single<Side> label="좌우" options={sug.sides.map((v) => ({ value: v, label: SIDE_LABEL[v] }))} values={filters.sides} onChange={(sides) => set({ sides })} />
+          <Single<number> label="대기 순서" options={sug.waits.map((v) => ({ value: v, label: `${v}번째` }))} values={filters.waitOrders} onChange={(waitOrders) => set({ waitOrders })} />
+          <Single<Crowding> label="혼잡도" options={(Object.keys(CROWDING_LABEL) as Crowding[]).map((v) => ({ value: v, label: CROWDING_LABEL[v] }))} values={filters.crowding} onChange={(crowding) => set({ crowding })} />
+          <Single<DelayFilter>
             label="지연"
             options={[
               { value: 'yes', label: '지연 있음' },
