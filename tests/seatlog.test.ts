@@ -199,8 +199,8 @@ describe('시나리오 5: 이벤트 수정·삭제 후 통계 재계산', () => 
     const ev = (await state(db, t.id)).events[0]
     await deleteSeatEvent(ev.id, db)
     r = await stats()
-    // 삭제로 완결 확인이 해제되었으므로 '서서 갔다'로 추정하지 않고 표본에서 제외된다
-    expect([r.everSeated.den, r.final.den, r.immediate.den]).toEqual([0, 0, 1])
+    // 이벤트 삭제 후에도 하차가 확인되어 최종 서서 이동으로 다시 판정된다
+    expect([r.everSeated.num, r.everSeated.den, r.final.num, r.final.den, r.immediate.den]).toEqual([0, 1, 0, 1, 1])
 
     await restoreSeatState(snap, db)
     r = await stats()
@@ -215,8 +215,8 @@ describe('시나리오 5: 이벤트 수정·삭제 후 통계 재계산', () => 
     await updateSeatEvent(ev.id, { time: '17:25' }, db)
     const s = await state(db, t.id)
     expect(s.summary.minutesToFirstSeat).toBe(25)
-    // 시각이 바뀌어 완결 확인이 해제되었으므로 서서 이동 시간은 미확인
-    expect(s.summary.standingMinutes).toBeNull()
+    // 이벤트 시각이 바뀌어도 하차 완료 상태이므로 경과 시간은 다시 계산된다
+    expect(s.summary.standingMinutes).toBe(25)
   })
 })
 
@@ -321,10 +321,10 @@ describe('판정 가능 표본과 해석 주의', () => {
   }
   it('지표마다 판정된 건수와 제외 사유를 센다 (미확인을 어느 쪽으로도 추정하지 않는다)', () => {
     const list = [
-      row({ initialSeat: 'seated' }), // 즉시 ✓ 한번이라도 ✓ 최종 ✗
+      row({ initialSeat: 'seated' }), // 하차 완료: 즉시 ✓ 한번이라도 ✓ 최종 ✓
       row({ initialSeat: 'standing', seatLogComplete: true }, [{ time: '08:10', state: 'seated' }]), // ✓ ✓ ✓
       row({ initialSeat: 'standing', seatLogComplete: true }), // ✓ 끝까지 서서 ✓
-      row({ initialSeat: 'standing' }), // 즉시 ✓, 한번이라도 제외(확인 안 함), 최종 제외
+      row({ initialSeat: 'standing', alightTime: null }), // 하차 미확인: 즉시 ✓, 한번이라도 제외, 최종 제외
       row({ initialSeat: null }), // 전부 제외
       row({ kind: 'missed', initialSeat: 'seated' }), // 탑승 아님
     ]
@@ -333,7 +333,7 @@ describe('판정 가능 표본과 해석 주의', () => {
     expect(c.total).toBe(5)
     expect(c.immediate).toEqual({ known: 4, unknown: 1 })
     expect(c.ever).toEqual({ seated: 2, stoodAll: 1, unconfirmedStanding: 1, unknown: 1 })
-    expect(c.final).toEqual({ known: 2, unconfirmed: 3 })
+    expect(c.final).toEqual({ known: 3, unconfirmed: 2 })
   })
   it('표본이 적은 100%(1/1)는 표본 부족, 일부만 판정된 비율은 일부 판정으로 알린다', () => {
     expect(sampleNote(1, 1)).toMatchObject({ insufficient: true, excluded: 0 })
