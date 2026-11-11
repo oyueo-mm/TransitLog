@@ -284,7 +284,7 @@ test.describe('좌석 기록 완결 확인(seatLogComplete)과 통계 재계산'
     await expect(ever).toContainText('판정 가능 12건 / 전체 30건 · 제외 18건')
     await expect(ever.locator('.caution')).toContainText('전체의 40%만 판정')
     await ever.locator('summary').click()
-    await expect(ever).toContainText('서서 탔지만 이후 앉았는지 확인하지 않음')
+    await expect(ever).toContainText('서서 탔지만 하차 기록이 없어 이후 상태 미확인')
     await expect(ever).toContainText('18건')
     // 판정 가능 표본이 충분한 즉시 착석률에는 경고가 없다
     const imm = page.locator('.metric', { hasText: '즉시 착석률' })
