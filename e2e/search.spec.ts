@@ -118,11 +118,11 @@ test.describe('고급 검색', () => {
     await expect(cards(page)).toHaveCount(4)
   })
 
-  test('좌석 조건: 끝까지 서 있었음(확인)·최종 미확인, 지연, 소요 시간', async ({ page }) => {
+  test('좌석 조건: 끝까지 서서 이동·최종 미확인, 지연, 소요 시간', async ({ page }) => {
     await restoreBackup(page, seed())
     await openSearch(page)
     await advanced(page)
-    await single(page, '탑승 중 좌석 변화', /끝까지 서 있었음/)
+    await single(page, '탑승 중 좌석 변화', '끝까지 서서 이동')
     await expect(cards(page)).toHaveCount(1)
     await expect(cards(page).first()).toContainText('신호 대기')
     await page.getByRole('button', { name: /조건 초기화/ }).click()
