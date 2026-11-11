@@ -1,4 +1,4 @@
-import { diffMinutes, parseHm } from './time'
+import { diffMinutes } from './time'
 import type { DayLog, SeatEvent, SeatState, Trip } from './types'
 
 /**
@@ -29,12 +29,13 @@ export function orderEvents(trip: Pick<Trip, 'boardTime'>, events: SeatEvent[]):
 }
 
 /**
- * 하차 시각이 확인된 종료 탑승은 좌석 이벤트의 끝도 확정된 것으로 처리한다.
- * 예전 명시적 완결(true)은 유지하며, 진행 중·하차 시각 미기록의 null/false는 추정하지 않는다.
+ * 개인 기록 규칙: 종료된 탑승은 마지막 좌석 상태가 하차까지 유지된 것으로 본다.
+ * 하차 시각이 없어도 좌석 변화의 종료 여부는 판단하며, 미기록 시각은 역산하지 않는다.
  * 데이터 자체를 변경하지 않고 기존 백업을 포함한 조회 시 계산한다.
  */
 export function isSeatLogComplete(trip: Pick<Trip, 'seatLogComplete'> & Partial<Pick<Trip, 'kind' | 'ongoing' | 'alightTime'>>): boolean {
-  return trip.seatLogComplete === true || (trip.kind === 'ride' && trip.ongoing === false && parseHm(trip.alightTime ?? null) !== null)
+  if (trip.kind === 'ride' && trip.ongoing === true) return false
+  return trip.seatLogComplete === true || (trip.kind === 'ride' && trip.ongoing === false)
 }
 
 export function summarizeSeat(trip: Trip, rawEvents: SeatEvent[]): SeatSummary {
